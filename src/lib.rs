@@ -202,6 +202,7 @@ mod test {
     use std::fs;
     use std::thread;
     use std::path::Path;
+    use std::io;
     use std::io::prelude::*;
 
     use {UnixListener, UnixStream};
@@ -269,5 +270,22 @@ mod test {
         thread.join();
 
         or_panic!(fs::remove_file(socket_path));
+    }
+
+    #[test]
+    fn long_path() {
+        let socket_path = "asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasd\
+                           asdfasdfasdfadfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasd";
+        match UnixStream::connect(socket_path) {
+            Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
+            Err(e) => panic!("unexpected error {}", e),
+            Ok(_) => panic!("unexpected success"),
+        }
+
+        match UnixListener::bind(socket_path) {
+            Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
+            Err(e) => panic!("unexpected error {}", e),
+            Ok(_) => panic!("unexpected success"),
+        }
     }
 }
