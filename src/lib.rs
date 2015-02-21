@@ -159,7 +159,7 @@ impl UnixListener {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> Incoming<'a> {
+    pub fn incoming<'a>(&'a self) -> Incoming<'a> {
         Incoming {
             listener: self
         }
@@ -177,7 +177,7 @@ impl<'a> IntoIterator for &'a UnixListener {
     type IntoIter = Incoming<'a>;
 
     fn into_iter(self) -> Incoming<'a> {
-        self.iter()
+        self.incoming()
     }
 }
 
@@ -255,7 +255,7 @@ mod test {
 
         let listener = or_panic!(UnixListener::bind(socket_path));
         let thread = thread::scoped(|| {
-            for stream in listener.iter().take(2) {
+            for stream in listener.incoming().take(2) {
                 let mut stream = or_panic!(stream);
                 let mut buf = [0];
                 or_panic!(stream.read(&mut buf));
