@@ -1,15 +1,16 @@
-#![feature(io, std_misc, path)]
+#![feature(io, std_misc, path, core)]
 #![cfg_attr(test, feature(fs))]
 
 extern crate libc;
 
-use std::ffi::AsOsStr;
-use std::mem;
-use std::path::AsPath;
-use std::os::unix::{Fd, OsStrExt, AsRawFd};
-use std::io;
-use std::num::Int;
 use std::cmp;
+use std::ffi::AsOsStr;
+use std::io;
+use std::iter::IntoIterator;
+use std::mem;
+use std::num::Int;
+use std::os::unix::{Fd, OsStrExt, AsRawFd};
+use std::path::AsPath;
 
 struct Inner(Fd);
 
@@ -157,11 +158,42 @@ impl UnixListener {
             }
         }
     }
+
+    pub fn iter<'a>(&'a self) -> Incoming<'a> {
+        Incoming {
+            listener: self
+        }
+    }
 }
 
 impl AsRawFd for UnixListener {
     fn as_raw_fd(&self) -> Fd {
         self.inner.0
+    }
+}
+
+impl<'a> IntoIterator for &'a UnixListener {
+    type Item = io::Result<UnixStream>;
+    type IntoIter = Incoming<'a>;
+
+    fn into_iter(self) -> Incoming<'a> {
+        self.iter()
+    }
+}
+
+pub struct Incoming<'a> {
+    listener: &'a UnixListener,
+}
+
+impl<'a> Iterator for Incoming<'a> {
+    type Item = io::Result<UnixStream>;
+
+    fn next(&mut self) -> Option<io::Result<UnixStream>> {
+        Some(self.listener.accept())
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (Int::max_value(), None)
     }
 }
 
@@ -184,7 +216,7 @@ mod test {
     }
 
     #[test]
-    fn test_basic() {
+    fn basic() {
         let socket_path = "unix_socket_test_basic";
         let msg1 = b"hello";
         let msg2 = b"world!";
@@ -207,6 +239,32 @@ mod test {
         or_panic!(stream.read_to_end(&mut buf));
         assert_eq!(msg2, buf);
         drop(stream);
+
+        thread.join();
+
+        or_panic!(fs::remove_file(socket_path));
+    }
+
+    #[test]
+    fn iter() {
+        let socket_path = "unix_socket_test_iter";
+        if Path::new(socket_path).exists() {
+            or_panic!(fs::remove_file(socket_path));
+        }
+
+        let listener = or_panic!(UnixListener::bind(socket_path));
+        let thread = thread::scoped(|| {
+            for stream in listener.iter().take(2) {
+                let mut stream = or_panic!(stream);
+                let mut buf = [0];
+                or_panic!(stream.read(&mut buf));
+            }
+        });
+
+        for _ in 0..2 {
+            let mut stream = or_panic!(UnixStream::connect(socket_path));
+            or_panic!(stream.write_all(&[0]));
+        }
 
         thread.join();
 
