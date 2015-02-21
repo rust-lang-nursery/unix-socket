@@ -1,5 +1,8 @@
+//! Support for Unix domain socket clients and servers.
 #![feature(io, std_misc, path, core)]
 #![cfg_attr(test, feature(fs))]
+#![warn(missing_docs)]
+#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/unix_socket")]
 
 extern crate libc;
 
@@ -52,11 +55,13 @@ unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P) -> io::Result<libc::sockaddr
     Ok(addr)
 }
 
+/// A stream which communicates over a Unix domain socket.
 pub struct UnixStream {
     inner: Inner,
 }
 
 impl UnixStream {
+    /// Connect to the socket named by `path`.
     pub fn connect<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixStream> {
         unsafe {
             let inner = try!(Inner::new());
@@ -118,11 +123,13 @@ impl AsRawFd for UnixStream {
     }
 }
 
+/// A structure representing a Unix domain socket server.
 pub struct UnixListener {
     inner: Inner,
 }
 
 impl UnixListener {
+    /// Creates a new `UnixListener` which will be bound to the specified socket.
     pub fn bind<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new());
@@ -146,6 +153,7 @@ impl UnixListener {
         }
     }
 
+    /// Accepts a new incoming connection to this listener.
     pub fn accept(&self) -> io::Result<UnixStream> {
         unsafe {
             let ret = libc::accept(self.inner.0, 0 as *mut _, 0 as *mut _);
@@ -159,6 +167,9 @@ impl UnixListener {
         }
     }
 
+    /// Returns an iterator over incoming connections.
+    ///
+    /// The iterator will never return `None`.
     pub fn incoming<'a>(&'a self) -> Incoming<'a> {
         Incoming {
             listener: self
@@ -181,6 +192,9 @@ impl<'a> IntoIterator for &'a UnixListener {
     }
 }
 
+/// An iterator over incoming connections to a `UnixListener`.
+///
+/// It will never return `None`.
 pub struct Incoming<'a> {
     listener: &'a UnixListener,
 }
