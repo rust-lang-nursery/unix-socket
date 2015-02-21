@@ -1,6 +1,5 @@
 //! Support for Unix domain socket clients and servers.
 #![feature(io, std_misc, path, core)]
-#![cfg_attr(test, feature(fs))]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/unix_socket")]
 
@@ -213,9 +212,9 @@ impl<'a> Iterator for Incoming<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::fs;
+    extern crate temporary;
+
     use std::thread;
-    use std::path::Path;
     use std::io;
     use std::io::prelude::*;
 
@@ -232,14 +231,12 @@ mod test {
 
     #[test]
     fn basic() {
-        let socket_path = "unix_socket_test_basic";
+        let dir = or_panic!(temporary::Directory::new("unix_socket"));
+        let socket_path = dir.path().join("sock");
         let msg1 = b"hello";
         let msg2 = b"world!";
-        if Path::new(socket_path).exists() {
-            or_panic!(fs::remove_file(socket_path));
-        }
 
-        let listener = or_panic!(UnixListener::bind(socket_path));
+        let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::scoped(|| {
             let mut stream = or_panic!(listener.accept());
             let mut buf = [0; 5];
@@ -248,7 +245,7 @@ mod test {
             or_panic!(stream.write_all(msg2));
         });
 
-        let mut stream = or_panic!(UnixStream::connect(socket_path));
+        let mut stream = or_panic!(UnixStream::connect(&socket_path));
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
@@ -256,18 +253,14 @@ mod test {
         drop(stream);
 
         thread.join();
-
-        or_panic!(fs::remove_file(socket_path));
     }
 
     #[test]
     fn iter() {
-        let socket_path = "unix_socket_test_iter";
-        if Path::new(socket_path).exists() {
-            or_panic!(fs::remove_file(socket_path));
-        }
+        let dir = or_panic!(temporary::Directory::new("unix_socket"));
+        let socket_path = dir.path().join("sock");
 
-        let listener = or_panic!(UnixListener::bind(socket_path));
+        let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::scoped(|| {
             for stream in listener.incoming().take(2) {
                 let mut stream = or_panic!(stream);
@@ -277,13 +270,11 @@ mod test {
         });
 
         for _ in 0..2 {
-            let mut stream = or_panic!(UnixStream::connect(socket_path));
+            let mut stream = or_panic!(UnixStream::connect(&socket_path));
             or_panic!(stream.write_all(&[0]));
         }
 
         thread.join();
-
-        or_panic!(fs::remove_file(socket_path));
     }
 
     #[test]
