@@ -1,7 +1,7 @@
 //! Support for Unix domain socket clients and servers.
 #![feature(io, std_misc, path, core)]
 #![warn(missing_docs)]
-#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/unix_socket")]
+#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
 extern crate libc;
 
@@ -41,7 +41,7 @@ unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P) -> io::Result<libc::sockaddr
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
 
     let bytes = path.as_path().as_os_str().as_bytes();
-    if bytes.len() > addr.sun_path.len() - 1 {
+    if bytes.len() >= addr.sun_path.len() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                   "path must be smaller than SUN_LEN",
                                   None));
