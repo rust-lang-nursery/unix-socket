@@ -13,4 +13,4 @@ keywords = ["posix", "unix", "socket", "domain"]
 libc = "0.1"
 
 [dev-dependencies]
-temporary = "0.0.1"
+temporary = "0.0.3"
