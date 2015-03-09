@@ -13,6 +13,11 @@ use std::mem;
 use std::num::Int;
 use std::os::unix::{Fd, OsStrExt, AsRawFd};
 use std::path::AsPath;
+use libc::c_int;
+
+extern "C" {
+    fn socketpair(domain: c_int, ty: c_int, proto: c_int, sv: *mut [c_int; 2]) -> c_int;
+}
 
 struct Inner(Fd);
 
@@ -34,6 +39,15 @@ impl Inner {
         }
     }
 
+    unsafe fn new_pair() -> io::Result<[Inner; 2]> {
+        let mut fds = [0, 0];
+        let res = socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, &mut fds);
+        if res < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        debug_assert_eq!(res, 0);
+        Ok([Inner(fds[0]), Inner(fds[1])])
+    }
 }
 
 unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P) -> io::Result<libc::sockaddr_un> {
@@ -76,6 +90,16 @@ impl UnixStream {
                     inner: inner,
                 })
             }
+        }
+    }
+
+    /// Create an unnamed pair of connected sockets.
+    ///
+    /// Returns two `UnixStream`s which are connected to each other.
+    pub fn unnamed() -> io::Result<[UnixStream; 2]> {
+        unsafe {
+            let [i1, i2] = try!(Inner::new_pair());
+            Ok([UnixStream { inner: i1 }, UnixStream { inner: i2 }])
         }
     }
 }
@@ -251,6 +275,29 @@ mod test {
         or_panic!(stream.read_to_end(&mut buf));
         assert_eq!(msg2, buf);
         drop(stream);
+
+        thread.join();
+    }
+
+    #[test]
+    fn unnamed() {
+        let msg1 = b"hello";
+        let msg2 = b"world!";
+
+        let [mut s1, mut s2] = or_panic!(UnixStream::unnamed());
+        let thread = thread::scoped(move || {
+            // s1 must be moved in or the test will hang!
+            let mut buf = [0; 5];
+            or_panic!(s1.read(&mut buf));
+            assert_eq!(msg1, buf);
+            or_panic!(s1.write_all(msg2));
+        });
+
+        or_panic!(s2.write_all(msg1));
+        let mut buf = vec![];
+        or_panic!(s2.read_to_end(&mut buf));
+        assert_eq!(msg2, buf);
+        drop(s2);
 
         thread.join();
     }
