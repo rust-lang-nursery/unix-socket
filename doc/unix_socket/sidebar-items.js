@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Incoming","An iterator over incoming connections to a `UnixListener`."],["UnixListener","A structure representing a Unix domain socket server."],["UnixStream","A stream which communicates over a Unix domain socket."]]});
