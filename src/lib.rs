@@ -102,6 +102,23 @@ impl UnixStream {
             Ok([UnixStream { inner: i1 }, UnixStream { inner: i2 }])
         }
     }
+
+    /// Create a new independently owned handle to the underlying socket.
+    ///
+    /// The returned `UnixStream` is a reference to the same stream that this
+    /// object references. Both handles will read and write the same stream of
+    /// data, and options set on one stream will be propogated to the other
+    /// stream.
+    pub fn try_clone(&self) -> io::Result<UnixStream> {
+        let fd = unsafe { libc::dup(self.inner.0) };
+        if fd < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(UnixStream {
+                inner: Inner(fd)
+            })
+        }
+    }
 }
 
 fn calc_len(buf: &[u8]) -> libc::size_t {
@@ -187,6 +204,22 @@ impl UnixListener {
                     inner: Inner(ret)
                 })
             }
+        }
+    }
+
+    /// Create a new independently owned handle to the underlying socket.
+    ///
+    /// The returned `UnixListener` is a reference to the same socket that this
+    /// object references. Both handles can be used to accept incoming
+    /// connections and options set on one listener will affect the other.
+    pub fn try_clone(&self) -> io::Result<UnixStream> {
+        let fd = unsafe { libc::dup(self.inner.0) };
+        if fd < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(UnixStream {
+                inner: Inner(fd)
+            })
         }
     }
 
@@ -298,6 +331,32 @@ mod test {
         or_panic!(s2.read_to_end(&mut buf));
         assert_eq!(msg2, buf);
         drop(s2);
+
+        thread.join();
+    }
+
+    #[test]
+    fn try_clone() {
+        let dir = or_panic!(temporary::Directory::new("unix_socket"));
+        let socket_path = dir.path().join("sock");
+        let msg1 = b"hello";
+        let msg2 = b"world";
+
+        let listener = or_panic!(UnixListener::bind(&socket_path));
+        let thread = thread::scoped(|| {
+            let mut stream = or_panic!(listener.accept());
+            or_panic!(stream.write_all(msg1));
+            or_panic!(stream.write_all(msg2));
+        });
+
+        let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        let mut stream2 = or_panic!(stream.try_clone());
+
+        let mut buf = [0; 5];
+        or_panic!(stream.read(&mut buf));
+        assert_eq!(msg1, buf);
+        or_panic!(stream2.read(&mut buf));
+        assert_eq!(msg2, buf);
 
         thread.join();
     }
