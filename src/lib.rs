@@ -306,6 +306,7 @@ impl<'a> IntoIterator for &'a UnixListener {
 /// An iterator over incoming connections to a `UnixListener`.
 ///
 /// It will never return `None`.
+#[derive(Debug)]
 pub struct Incoming<'a> {
     listener: &'a UnixListener,
 }
