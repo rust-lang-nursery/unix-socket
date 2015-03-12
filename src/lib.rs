@@ -64,13 +64,11 @@ impl Inner {
             if ret == 0 {
                 debug_assert_eq!(addr.sun_family, libc::AF_UNIX as libc::sa_family_t);
 
-                try!(write!(fmt, ", address: "));
-
                 let offset = &(*(0 as *const libc::sockaddr_un)).sun_path as *const _ as usize;
                 let path_len = len as usize - offset;
 
                 if path_len == 0 {
-                    try!(write!(fmt, "(unnamed)"));
+                    write!(fmt, "(unnamed)")
                 } else {
                     let (path, kind) = if addr.sun_path[0] == 0 {
                         (&addr.sun_path[1..path_len], "abstract")
@@ -80,12 +78,12 @@ impl Inner {
 
                     let path: &[u8] = mem::transmute(path);
                     let path = OsStr::from_bytes(path).as_path().display();
-                    try!(write!(fmt, "{:?} ({})", path, kind));
+                    write!(fmt, "{:?} ({})", path, kind)
                 }
+            } else {
+                write!(fmt, "<{}>", io::Error::last_os_error())
             }
         }
-
-        Ok(())
     }
 }
 
@@ -114,7 +112,7 @@ pub struct UnixStream {
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(fmt, "UnixStream {{ fd: {}", self.inner.0));
+        try!(write!(fmt, "UnixStream {{ fd: {}, address: ", self.inner.0));
         try!(self.inner.fmt(libc::getpeername, fmt));
         write!(fmt, " }}")
     }
@@ -217,7 +215,7 @@ pub struct UnixListener {
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(fmt, "UnixListener {{ fd: {}", self.inner.0));
+        try!(write!(fmt, "UnixListener {{ fd: {}, address: ", self.inner.0));
         try!(self.inner.fmt(libc::getsockname, fmt));
         write!(fmt, " }}")
     }
