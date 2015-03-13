@@ -544,6 +544,15 @@
 <span id="502">502</span>
 <span id="503">503</span>
 <span id="504">504</span>
+<span id="505">505</span>
+<span id="506">506</span>
+<span id="507">507</span>
+<span id="508">508</span>
+<span id="509">509</span>
+<span id="510">510</span>
+<span id="511">511</span>
+<span id="512">512</span>
+<span id="513">513</span>
 </pre><pre class='rust '>
 <span class='doccomment'>//! Support for Unix domain socket clients and servers.</span>
 <span class='attribute'>#<span class='op'>!</span>[<span class='ident'>feature</span>(<span class='ident'>io</span>, <span class='ident'>std_misc</span>, <span class='ident'>path</span>, <span class='ident'>core</span>)]</span>
@@ -690,6 +699,10 @@
 
 <span class='kw'>impl</span> <span class='ident'>UnixStream</span> {
     <span class='doccomment'>/// Connect to the socket named by `path`.</span>
+    <span class='doccomment'>///</span>
+    <span class='doccomment'>/// If `path` begins with a null byte, it will be interpreted as an</span>
+    <span class='doccomment'>/// &quot;abstract&quot; address. Otherwise, it will be interpreted as a &quot;pathname&quot;</span>
+    <span class='doccomment'>/// address, corresponding to a path on the filesystem.</span>
     <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>connect</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsPath</span> <span class='op'>+</span> ?<span class='ident'>Sized</span><span class='op'>&gt;</span>(<span class='ident'>path</span>: <span class='kw-2'>&amp;</span><span class='ident'>P</span>) <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span><span class='ident'>UnixStream</span><span class='op'>&gt;</span> {
         <span class='kw'>unsafe</span> {
             <span class='kw'>let</span> <span class='ident'>inner</span> <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>Inner</span>::<span class='ident'>new</span>());
@@ -792,7 +805,12 @@
 }
 
 <span class='kw'>impl</span> <span class='ident'>UnixListener</span> {
-    <span class='doccomment'>/// Creates a new `UnixListener` which will be bound to the specified socket.</span>
+    <span class='doccomment'>/// Creates a new `UnixListener` which will be bound to the specified</span>
+    <span class='doccomment'>/// socket.</span>
+    <span class='doccomment'>///</span>
+    <span class='doccomment'>/// If `path` begins with a null byte, it will be interpreted as an</span>
+    <span class='doccomment'>/// &quot;abstract&quot; address. Otherwise, it will be interpreted as a &quot;pathname&quot;</span>
+    <span class='doccomment'>/// address, corresponding to a path on the filesystem.</span>
     <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>bind</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsPath</span> <span class='op'>+</span> ?<span class='ident'>Sized</span><span class='op'>&gt;</span>(<span class='ident'>path</span>: <span class='kw-2'>&amp;</span><span class='ident'>P</span>) <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span><span class='ident'>UnixListener</span><span class='op'>&gt;</span> {
         <span class='kw'>unsafe</span> {
             <span class='kw'>let</span> <span class='ident'>inner</span> <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>Inner</span>::<span class='ident'>new</span>());
