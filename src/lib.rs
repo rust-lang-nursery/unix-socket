@@ -103,12 +103,12 @@ unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P)
         // Abstract paths don't need a null terminator
         (Some(&0), Ordering::Greater) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "path must be no greater than SUN_LEN",
+                                      "path must be no longer than SUN_LEN",
                                       None))
         }
         (_, Ordering::Greater) | (_, Ordering::Equal) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "path must be smaller than SUN_LEN",
+                                      "path must be shorter than SUN_LEN",
                                       None));
         }
         _ => {}
