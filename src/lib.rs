@@ -143,6 +143,10 @@ impl fmt::Debug for UnixStream {
 
 impl UnixStream {
     /// Connect to the socket named by `path`.
+    ///
+    /// If `path` begins with a null byte, it will be interpreted as an
+    /// "abstract" address. Otherwise, it will be interpreted as a "pathname"
+    /// address, corresponding to a path on the filesystem.
     pub fn connect<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixStream> {
         unsafe {
             let inner = try!(Inner::new());
@@ -245,7 +249,12 @@ impl fmt::Debug for UnixListener {
 }
 
 impl UnixListener {
-    /// Creates a new `UnixListener` which will be bound to the specified socket.
+    /// Creates a new `UnixListener` which will be bound to the specified
+    /// socket.
+    ///
+    /// If `path` begins with a null byte, it will be interpreted as an
+    /// "abstract" address. Otherwise, it will be interpreted as a "pathname"
+    /// address, corresponding to a path on the filesystem.
     pub fn bind<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new());
