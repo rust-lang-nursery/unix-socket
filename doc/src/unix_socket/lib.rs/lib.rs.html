@@ -676,8 +676,8 @@
 
     <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>len</span> <span class='op'>=</span> <span class='ident'>sun_path_offset</span>() <span class='op'>+</span> <span class='ident'>bytes</span>.<span class='ident'>len</span>();
     <span class='kw'>match</span> <span class='ident'>bytes</span>.<span class='ident'>get</span>(<span class='number'>0</span>) {
-        <span class='prelude-val'>Some</span>(<span class='kw-2'>&amp;</span><span class='number'>0</span>) <span class='op'>=&gt;</span> {}
-        _ <span class='op'>=&gt;</span> <span class='ident'>len</span> <span class='op'>+=</span> <span class='number'>1</span>
+        <span class='prelude-val'>Some</span>(<span class='kw-2'>&amp;</span><span class='number'>0</span>) <span class='op'>|</span> <span class='prelude-val'>None</span> <span class='op'>=&gt;</span> {}
+        <span class='prelude-val'>Some</span>(_) <span class='op'>=&gt;</span> <span class='ident'>len</span> <span class='op'>+=</span> <span class='number'>1</span>
     }
     <span class='prelude-val'>Ok</span>((<span class='ident'>addr</span>, <span class='ident'>len</span> <span class='kw'>as</span> <span class='ident'>libc</span>::<span class='ident'>socklen_t</span>))
 }
