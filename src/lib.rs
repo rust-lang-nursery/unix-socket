@@ -120,8 +120,8 @@ unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P)
 
     let mut len = sun_path_offset() + bytes.len();
     match bytes.get(0) {
-        Some(&0) => {}
-        _ => len += 1
+        Some(&0) | None => {}
+        Some(_) => len += 1
     }
     Ok((addr, len as libc::socklen_t))
 }
