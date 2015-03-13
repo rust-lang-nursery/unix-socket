@@ -5,7 +5,7 @@
 
 extern crate libc;
 
-use std::cmp;
+use std::cmp::{self, Ordering};
 use std::ffi::{OsStr, AsOsStr};
 use std::io;
 use std::iter::IntoIterator;
@@ -18,6 +18,12 @@ use std::fmt;
 
 extern "C" {
     fn socketpair(domain: c_int, ty: c_int, proto: c_int, sv: *mut [c_int; 2]) -> c_int;
+}
+
+fn sun_path_offset() -> usize {
+    unsafe {
+        &(*(0 as *const libc::sockaddr_un)).sun_path as *const _ as usize
+    }
 }
 
 struct Inner(Fd);
@@ -64,8 +70,7 @@ impl Inner {
             if ret == 0 {
                 debug_assert_eq!(addr.sun_family, libc::AF_UNIX as libc::sa_family_t);
 
-                let offset = &(*(0 as *const libc::sockaddr_un)).sun_path as *const _ as usize;
-                let path_len = len as usize - offset;
+                let path_len = len as usize - sun_path_offset();
 
                 if path_len == 0 {
                     write!(fmt, "(unnamed)")
@@ -87,22 +92,38 @@ impl Inner {
     }
 }
 
-unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P) -> io::Result<libc::sockaddr_un> {
+unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P)
+        -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
     let mut addr: libc::sockaddr_un = mem::zeroed();
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
 
     let bytes = path.as_path().as_os_str().as_bytes();
-    if bytes.len() >= addr.sun_path.len() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                  "path must be smaller than SUN_LEN",
-                                  None));
+
+    match (bytes.get(0), bytes.len().cmp(&addr.sun_path.len())) {
+        // Abstract paths don't need a null terminator
+        (Some(&0), Ordering::Greater) => {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      "path must be no greater than SUN_LEN",
+                                      None))
+        }
+        (_, Ordering::Greater) | (_, Ordering::Equal) => {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      "path must be smaller than SUN_LEN",
+                                      None));
+        }
+        _ => {}
     }
     for (dst, src) in addr.sun_path.iter_mut().zip(bytes.iter()) {
         *dst = *src as libc::c_char;
     }
-    // null byte's already there because we zeroed the struct
+    // null byte for pathname addresses is already there because we zeroed the struct
 
-    Ok(addr)
+    let mut len = sun_path_offset() + bytes.len();
+    match bytes.get(0) {
+        Some(&0) => {}
+        _ => len += 1
+    }
+    Ok((addr, len as libc::socklen_t))
 }
 
 /// A stream which communicates over a Unix domain socket.
@@ -113,6 +134,8 @@ pub struct UnixStream {
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(fmt, "UnixStream {{ fd: {}, address: ", self.inner.0));
+        try!(self.inner.fmt(libc::getsockname, fmt));
+        try!(write!(fmt, ", peer: "));
         try!(self.inner.fmt(libc::getpeername, fmt));
         write!(fmt, " }}")
     }
@@ -123,11 +146,11 @@ impl UnixStream {
     pub fn connect<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixStream> {
         unsafe {
             let inner = try!(Inner::new());
-            let addr = try!(sockaddr_un(path));
+            let (addr, len) = try!(sockaddr_un(path));
 
             let ret = libc::connect(inner.0,
                                     &addr as *const _ as *const _,
-                                    mem::size_of::<libc::sockaddr_un>() as libc::socklen_t);
+                                    len);
             if ret < 0 {
                 Err(io::Error::last_os_error())
             } else {
@@ -167,7 +190,7 @@ impl UnixStream {
 }
 
 fn calc_len(buf: &[u8]) -> libc::size_t {
-    cmp::min(<libc::size_t as Int>::max_value() as usize, buf.len()) as libc::size_t
+    cmp::min(libc::size_t::max_value() as usize, buf.len()) as libc::size_t
 }
 
 impl io::Read for UnixStream {
@@ -226,11 +249,11 @@ impl UnixListener {
     pub fn bind<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new());
-            let addr = try!(sockaddr_un(path));
+            let (addr, len) = try!(sockaddr_un(path));
 
             let ret = libc::bind(inner.0,
                                  &addr as *const _ as *const _,
-                                 mem::size_of::<libc::sockaddr_un>() as libc::socklen_t);
+                                 len);
             if ret < 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -385,6 +408,31 @@ mod test {
         or_panic!(s2.read_to_end(&mut buf));
         assert_eq!(msg2, buf);
         drop(s2);
+
+        thread.join();
+    }
+
+    #[test]
+    fn abstract_address() {
+        let socket_path = "\0the path";
+        let msg1 = b"hello";
+        let msg2 = b"world!";
+
+        let listener = or_panic!(UnixListener::bind(&socket_path));
+        let thread = thread::scoped(|| {
+            let mut stream = or_panic!(listener.accept());
+            let mut buf = [0; 5];
+            or_panic!(stream.read(&mut buf));
+            assert_eq!(msg1, buf);
+            or_panic!(stream.write_all(msg2));
+        });
+
+        let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        or_panic!(stream.write_all(msg1));
+        let mut buf = vec![];
+        or_panic!(stream.read_to_end(&mut buf));
+        assert_eq!(msg2, buf);
+        drop(stream);
 
         thread.join();
     }
