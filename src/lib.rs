@@ -1,5 +1,5 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, std_misc, core, debug_builders)]
+#![feature(io, std_misc, core, debug_builders, net)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
@@ -8,6 +8,7 @@ extern crate libc;
 use std::cmp::{self, Ordering};
 use std::ffi::{OsStr, AsOsStr};
 use std::io;
+use std::net::Shutdown;
 use std::iter::IntoIterator;
 use std::mem;
 use std::num::Int;
@@ -269,6 +270,26 @@ impl UnixStream {
     /// Returns the socket address of the remote half of this connection.
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(self.inner.0, libc::getpeername)
+    }
+
+    /// Shut down the read, write, or both halves of this connection.
+    ///
+    /// This function will cause all pending and future I/O calls on the
+    /// specified portions to immediately return with an appropriate value
+    /// (see the documentation of `Shutdown`).
+    pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        let how = match how {
+            Shutdown::Read => libc::SHUT_RD,
+            Shutdown::Write => libc::SHUT_WR,
+            Shutdown::Both => libc::SHUT_RDWR,
+        };
+
+        let ret = unsafe { libc::shutdown(self.inner.0, how) };
+        if ret != 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 }
 
