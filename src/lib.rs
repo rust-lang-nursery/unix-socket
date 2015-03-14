@@ -511,6 +511,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(not(linux), ignore)]
     fn abstract_address() {
         let socket_path = "\0the path";
         let msg1 = b"hello";
