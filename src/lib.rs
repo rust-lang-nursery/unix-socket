@@ -1,5 +1,5 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, std_misc, path, core, debug_builders)]
+#![feature(io, std_misc, core, debug_builders)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
@@ -142,7 +142,9 @@ impl SocketAddr {
 
     /// Returns the kind of the address.
     pub fn kind(&self) -> AddressKind {
-        if self.len as usize == sun_path_offset() {
+        // OSX seems to return a len of 16 and a zeroed sun_path for unnamed addresses
+        if self.len as usize == sun_path_offset() ||
+                (!cfg!(target_os = "linux") && self.addr.sun_path[0] == 0) {
             AddressKind::Unnamed
         } else if self.addr.sun_path[0] == 0 {
             AddressKind::Abstract
@@ -156,15 +158,11 @@ impl SocketAddr {
     /// Unnamed addresses do not have a value.
     pub fn address(&self) -> Option<&Path> {
         let len = self.len as usize - sun_path_offset();
-        if len == 0 {
-            return None;
-        }
-
         let path = unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&self.addr.sun_path) };
-        if self.addr.sun_path[0] == 0 {
-            Some(OsStr::from_bytes(&path[1..len]).as_path())
-        } else {
-            Some(OsStr::from_bytes(&path[..len - 1]).as_path())
+        match self.kind() {
+            AddressKind::Unnamed => None,
+            AddressKind::Abstract => Some(OsStr::from_bytes(&path[1..len]).as_path()),
+            AddressKind::Pathname => Some(OsStr::from_bytes(&path[..len - 1]).as_path()),
         }
     }
 }
