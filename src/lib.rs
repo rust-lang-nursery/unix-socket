@@ -22,7 +22,7 @@ extern "C" {
                   ty: libc::c_int,
                   proto: libc::c_int,
                   sv: *mut [libc::c_int; 2])
-                  -> c_int;
+                  -> libc::c_int;
 }
 
 fn sun_path_offset() -> usize {
@@ -62,7 +62,7 @@ impl Inner {
     }
 }
 
-unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P)
+unsafe fn sockaddr_un<P: AsPath>(path: P)
         -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
     let mut addr: libc::sockaddr_un = mem::zeroed();
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
@@ -220,7 +220,7 @@ impl UnixStream {
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
-    pub fn connect<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixStream> {
+    pub fn connect<P: AsPath>(path: P) -> io::Result<UnixStream> {
         unsafe {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
@@ -361,7 +361,7 @@ impl UnixListener {
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
-    pub fn bind<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixListener> {
+    pub fn bind<P: AsPath>(path: P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
