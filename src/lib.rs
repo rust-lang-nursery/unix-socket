@@ -110,10 +110,18 @@ pub enum AddressKind {
 }
 
 /// An address associated with a Unix socket.
-#[derive(Copy)]
 pub struct SocketAddr {
     addr: libc::sockaddr_un,
     len: libc::socklen_t,
+}
+
+impl Clone for SocketAddr {
+    fn clone(&self) -> SocketAddr {
+        SocketAddr {
+            addr: self.addr,
+            len: self.len,
+        }
+    }
 }
 
 impl SocketAddr {
