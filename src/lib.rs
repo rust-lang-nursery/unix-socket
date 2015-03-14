@@ -14,12 +14,15 @@ use std::mem;
 use std::num::Int;
 use std::os::unix::{Fd, OsStrExt, AsRawFd};
 use std::path::AsPath;
-use libc::c_int;
 use std::fmt;
 use std::path::Path;
 
 extern "C" {
-    fn socketpair(domain: c_int, ty: c_int, proto: c_int, sv: *mut [c_int; 2]) -> c_int;
+    fn socketpair(domain: libc::c_int,
+                  ty: libc::c_int,
+                  proto: libc::c_int,
+                  sv: *mut [libc::c_int; 2])
+                  -> c_int;
 }
 
 fn sun_path_offset() -> usize {
