@@ -1,5 +1,5 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, std_misc, path, core)]
+#![feature(io, std_misc, path, core, debug_builders)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
@@ -15,6 +15,7 @@ use std::os::unix::{Fd, OsStrExt, AsRawFd};
 use std::path::AsPath;
 use libc::c_int;
 use std::fmt;
+use std::path::Path;
 
 extern "C" {
     fn socketpair(domain: c_int, ty: c_int, proto: c_int, sv: *mut [c_int; 2]) -> c_int;
@@ -55,41 +56,6 @@ impl Inner {
         debug_assert_eq!(res, 0);
         Ok([Inner(fds[0]), Inner(fds[1])])
     }
-
-    fn fmt(&self,
-           f: unsafe extern "system" fn(libc::c_int,
-                                        *mut libc::sockaddr,
-                                        *mut libc::socklen_t) -> libc::c_int,
-           fmt: &mut fmt::Formatter) -> fmt::Result {
-        unsafe {
-            let mut addr: libc::sockaddr_un = mem::zeroed();
-            let mut len = mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
-
-            let ret = f(self.0, &mut addr as *mut _ as *mut _ , &mut len as *mut _);
-
-            if ret == 0 {
-                debug_assert_eq!(addr.sun_family, libc::AF_UNIX as libc::sa_family_t);
-
-                let path_len = len as usize - sun_path_offset();
-
-                if path_len == 0 {
-                    write!(fmt, "(unnamed)")
-                } else {
-                    let (path, kind) = if addr.sun_path[0] == 0 {
-                        (&addr.sun_path[1..path_len], "abstract")
-                    } else {
-                        (&addr.sun_path[..path_len - 1], "pathname")
-                    };
-
-                    let path: &[u8] = mem::transmute(path);
-                    let path = OsStr::from_bytes(path).as_path().display();
-                    write!(fmt, "{:?} ({})", path, kind)
-                }
-            } else {
-                write!(fmt, "<{}>", io::Error::last_os_error())
-            }
-        }
-    }
 }
 
 unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P)
@@ -126,6 +92,109 @@ unsafe fn sockaddr_un<P: AsPath + ?Sized>(path: &P)
     Ok((addr, len as libc::socklen_t))
 }
 
+/// The kind of an address associated with a Unix socket.
+#[derive(Debug, Clone, Copy)]
+pub enum AddressKind {
+    /// An unnamed address.
+    Unnamed,
+    /// An address corresponding to a path on the filesystem.
+    Pathname,
+    /// An address in an abstract namespace unrelated to the filesystem.
+    ///
+    /// Abstract addresses are a nonportable Linux extension.
+    Abstract,
+}
+
+/// An address associated with a Unix socket.
+#[derive(Copy)]
+pub struct SocketAddr {
+    addr: libc::sockaddr_un,
+    len: libc::socklen_t,
+}
+
+impl SocketAddr {
+    fn new(fd: Fd,
+           f: unsafe extern "system" fn(libc::c_int,
+                                        *mut libc::sockaddr,
+                                        *mut libc::socklen_t) -> libc::c_int)
+           -> io::Result<SocketAddr> {
+        unsafe {
+            let mut addr: libc::sockaddr_un = mem::zeroed();
+            let mut len = mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
+            let ret = f(fd, &mut addr as *mut _ as *mut _, &mut len);
+
+            if ret != 0 {
+                return Err(io::Error::last_os_error());
+            }
+
+            if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                          "file descriptor did not correspond to a Unix socket",
+                                          None));
+            }
+
+            Ok(SocketAddr {
+                addr: addr,
+                len: len,
+            })
+        }
+    }
+
+    /// Returns the kind of the address.
+    pub fn kind(&self) -> AddressKind {
+        if self.len as usize == sun_path_offset() {
+            AddressKind::Unnamed
+        } else if self.addr.sun_path[0] == 0 {
+            AddressKind::Abstract
+        } else {
+            AddressKind::Pathname
+        }
+    }
+
+    /// Returns the value of the address.
+    ///
+    /// Unnamed addresses do not have a value.
+    pub fn address(&self) -> Option<&Path> {
+        let len = self.len as usize - sun_path_offset();
+        if len == 0 {
+            return None;
+        }
+
+        let path = unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&self.addr.sun_path) };
+        if self.addr.sun_path[0] == 0 {
+            Some(OsStr::from_bytes(&path[1..len]).as_path())
+        } else {
+            Some(OsStr::from_bytes(&path[..len - 1]).as_path())
+        }
+    }
+}
+
+impl fmt::Debug for SocketAddr {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(address) = self.address() {
+            try!(write!(fmt, "{:?} ", address.display()));
+        }
+
+        let kind = match self.kind() {
+            AddressKind::Unnamed => "unnamed",
+            AddressKind::Pathname => "pathname",
+            AddressKind::Abstract => "abstract",
+        };
+        write!(fmt, "({})", kind)
+    }
+}
+
+struct DebugErr(io::Result<SocketAddr>);
+
+impl fmt::Debug for DebugErr {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Ok(ref addr) => fmt::Debug::fmt(addr, fmt),
+            Err(ref err) => fmt::Display::fmt(err, fmt),
+        }
+    }
+}
+
 /// A stream which communicates over a Unix domain socket.
 pub struct UnixStream {
     inner: Inner,
@@ -133,20 +202,22 @@ pub struct UnixStream {
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(fmt, "UnixStream {{ fd: {}, address: ", self.inner.0));
-        try!(self.inner.fmt(libc::getsockname, fmt));
-        try!(write!(fmt, ", peer: "));
-        try!(self.inner.fmt(libc::getpeername, fmt));
-        write!(fmt, " }}")
+        fmt.debug_struct("UnixStream")
+            .field("fd", &self.inner.0)
+            .field("local", &DebugErr(self.local_addr()))
+            .field("peer", &DebugErr(self.peer_addr()))
+            .finish()
     }
 }
 
 impl UnixStream {
     /// Connect to the socket named by `path`.
     ///
-    /// If `path` begins with a null byte, it will be interpreted as an
-    /// "abstract" address. Otherwise, it will be interpreted as a "pathname"
-    /// address, corresponding to a path on the filesystem.
+    /// Linux provides, as a nonportable extension, a separate "abstract"
+    /// address namespace as opposed to filesystem-based addressing. If `path`
+    /// begins with a null byte, it will be interpreted as an "abstract"
+    /// address. Otherwise, it will be interpreted as a "pathname" address,
+    /// corresponding to a path on the filesystem.
     pub fn connect<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixStream> {
         unsafe {
             let inner = try!(Inner::new());
@@ -190,6 +261,16 @@ impl UnixStream {
                 inner: Inner(fd)
             })
         }
+    }
+
+    /// Returns the socket address of the local half of this connection.
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        SocketAddr::new(self.inner.0, libc::getsockname)
+    }
+
+    /// Returns the socket address of the remote half of this connection.
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        SocketAddr::new(self.inner.0, libc::getpeername)
     }
 }
 
@@ -242,9 +323,10 @@ pub struct UnixListener {
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(fmt, "UnixListener {{ fd: {}, address: ", self.inner.0));
-        try!(self.inner.fmt(libc::getsockname, fmt));
-        write!(fmt, " }}")
+        fmt.debug_struct("UnixListener")
+            .field("fd", &self.inner.0)
+            .field("local", &DebugErr(self.local_addr()))
+            .finish()
     }
 }
 
@@ -252,9 +334,11 @@ impl UnixListener {
     /// Creates a new `UnixListener` which will be bound to the specified
     /// socket.
     ///
-    /// If `path` begins with a null byte, it will be interpreted as an
-    /// "abstract" address. Otherwise, it will be interpreted as a "pathname"
-    /// address, corresponding to a path on the filesystem.
+    /// Linux provides, as a nonportable extension, a separate "abstract"
+    /// address namespace as opposed to filesystem-based addressing. If `path`
+    /// begins with a null byte, it will be interpreted as an "abstract"
+    /// address. Otherwise, it will be interpreted as a "pathname" address,
+    /// corresponding to a path on the filesystem.
     pub fn bind<P: AsPath + ?Sized>(path: &P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new());
@@ -306,6 +390,11 @@ impl UnixListener {
                 inner: Inner(fd)
             })
         }
+    }
+
+    /// Returns the socket address of the local half of this connection.
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        SocketAddr::new(self.inner.0, libc::getsockname)
     }
 
     /// Returns an iterator over incoming connections.
