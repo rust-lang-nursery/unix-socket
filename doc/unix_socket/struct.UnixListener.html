@@ -43,11 +43,11 @@
     <section id='main' class="content struct">
 <h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>unix_socket</a>::<wbr><a class='struct' href=''>UnixListener</a><wbr></span><span class='out-of-band'><span id='render-detail'>
             <a id="collapse-all" href="#">[-]</a>&nbsp;<a id="expand-all" href="#">[+]</a>
-        </span><a id='src-1289' href='../src/unix_socket/lib.rs.html#339-341'>[src]</a></span></h1>
+        </span><a id='src-1284' href='../src/unix_socket/lib.rs.html#342-344'>[src]</a></span></h1>
 <pre class='rust struct'>pub struct UnixListener {
     // some fields omitted
 }</pre><div class='docblock'><p>A structure representing a Unix domain socket server.</p>
-</div><h2 id='methods'>Methods</h2><h3 class='impl'><a class='stability Unmarked' title='No stability level'></a><code>impl <a class='struct' href='../unix_socket/struct.UnixListener.html' title='unix_socket::UnixListener'>UnixListener</a></code></h3><div class='impl-items'><h4 id='method.bind' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.bind' class='fnname'>bind</a>&lt;P: <a class='trait' href='http://doc.rust-lang.org/nightly/std/path/trait.AsPath.html' title='std::path::AsPath'>AsPath</a> + ?<a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Sized.html' title='core::marker::Sized'>Sized</a>&gt;(path: &amp;P) -&gt; <a class='type' href='http://doc.rust-lang.org/nightly/std/io/error/type.Result.html' title='std::io::error::Result'>Result</a>&lt;<a class='struct' href='../unix_socket/struct.UnixListener.html' title='unix_socket::UnixListener'>UnixListener</a>&gt;</code></h4>
+</div><h2 id='methods'>Methods</h2><h3 class='impl'><a class='stability Unmarked' title='No stability level'></a><code>impl <a class='struct' href='../unix_socket/struct.UnixListener.html' title='unix_socket::UnixListener'>UnixListener</a></code></h3><div class='impl-items'><h4 id='method.bind' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.bind' class='fnname'>bind</a>&lt;P: <a class='trait' href='http://doc.rust-lang.org/nightly/std/path/trait.AsPath.html' title='std::path::AsPath'>AsPath</a>&gt;(path: P) -&gt; <a class='type' href='http://doc.rust-lang.org/nightly/std/io/error/type.Result.html' title='std::io::error::Result'>Result</a>&lt;<a class='struct' href='../unix_socket/struct.UnixListener.html' title='unix_socket::UnixListener'>UnixListener</a>&gt;</code></h4>
 <div class='docblock'><p>Creates a new <code>UnixListener</code> which will be bound to the specified
 socket.</p>
 
