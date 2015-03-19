@@ -1,5 +1,5 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, std_misc, core, debug_builders, net)]
+#![feature(io, std_misc, core, debug_builders, io_ext)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
@@ -12,7 +12,8 @@ use std::net::Shutdown;
 use std::iter::IntoIterator;
 use std::mem;
 use std::num::Int;
-use std::os::unix::{Fd, OsStrExt, AsRawFd};
+use std::os::unix::io::{Fd, AsRawFd};
+use std::os::unix::ffi::OsStrExt;
 use std::path::AsPath;
 use std::fmt;
 use std::path::Path;
