@@ -504,7 +504,7 @@ mod test {
             let mut stream = or_panic!(listener.accept());
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
-            assert_eq!(msg1, buf);
+            assert_eq!(&msg1[..], &buf[..]);
             or_panic!(stream.write_all(msg2));
         });
 
@@ -512,7 +512,7 @@ mod test {
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
-        assert_eq!(msg2, buf);
+        assert_eq!(&msg2[..], &buf[..]);
         drop(stream);
 
         thread.join();
@@ -528,14 +528,14 @@ mod test {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
             or_panic!(s1.read(&mut buf));
-            assert_eq!(msg1, buf);
+            assert_eq!(&msg1[..], &buf[..]);
             or_panic!(s1.write_all(msg2));
         });
 
         or_panic!(s2.write_all(msg1));
         let mut buf = vec![];
         or_panic!(s2.read_to_end(&mut buf));
-        assert_eq!(msg2, buf);
+        assert_eq!(&msg2[..], &buf[..]);
         drop(s2);
 
         thread.join();
@@ -553,7 +553,7 @@ mod test {
             let mut stream = or_panic!(listener.accept());
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
-            assert_eq!(msg1, buf);
+            assert_eq!(&msg1[..], &buf[..]);
             or_panic!(stream.write_all(msg2));
         });
 
@@ -561,7 +561,7 @@ mod test {
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
-        assert_eq!(msg2, buf);
+        assert_eq!(&msg2[..], &buf[..]);
         drop(stream);
 
         thread.join();
@@ -586,9 +586,9 @@ mod test {
 
         let mut buf = [0; 5];
         or_panic!(stream.read(&mut buf));
-        assert_eq!(msg1, buf);
+        assert_eq!(&msg1[..], &buf[..]);
         or_panic!(stream2.read(&mut buf));
-        assert_eq!(msg2, buf);
+        assert_eq!(&msg2[..], &buf[..]);
 
         thread.join();
     }
