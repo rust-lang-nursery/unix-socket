@@ -9,7 +9,7 @@
 
     <title>lib.rs.html -- source</title>
 
-    <link rel="stylesheet" type="text/css" href="../../../main.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
 
     
     
@@ -1181,7 +1181,7 @@
             <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>stream</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>listener</span>.<span class='ident'>accept</span>());
             <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> [<span class='number'>0</span>; <span class='number'>5</span>];
             <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>read</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-            <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg1</span>, <span class='ident'>buf</span>);
+            <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg1</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
             <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>write_all</span>(<span class='ident'>msg2</span>));
         });
 
@@ -1189,7 +1189,7 @@
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>write_all</span>(<span class='ident'>msg1</span>));
         <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> <span class='macro'>vec</span><span class='macro'>!</span>[];
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>read_to_end</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg2</span>, <span class='ident'>buf</span>);
+        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg2</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
         <span class='ident'>drop</span>(<span class='ident'>stream</span>);
 
         <span class='ident'>thread</span>.<span class='ident'>join</span>();
@@ -1205,14 +1205,14 @@
             <span class='comment'>// s1 must be moved in or the test will hang!</span>
             <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> [<span class='number'>0</span>; <span class='number'>5</span>];
             <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>s1</span>.<span class='ident'>read</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-            <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg1</span>, <span class='ident'>buf</span>);
+            <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg1</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
             <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>s1</span>.<span class='ident'>write_all</span>(<span class='ident'>msg2</span>));
         });
 
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>s2</span>.<span class='ident'>write_all</span>(<span class='ident'>msg1</span>));
         <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> <span class='macro'>vec</span><span class='macro'>!</span>[];
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>s2</span>.<span class='ident'>read_to_end</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg2</span>, <span class='ident'>buf</span>);
+        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg2</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
         <span class='ident'>drop</span>(<span class='ident'>s2</span>);
 
         <span class='ident'>thread</span>.<span class='ident'>join</span>();
@@ -1230,7 +1230,7 @@
             <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>stream</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>listener</span>.<span class='ident'>accept</span>());
             <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> [<span class='number'>0</span>; <span class='number'>5</span>];
             <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>read</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-            <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg1</span>, <span class='ident'>buf</span>);
+            <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg1</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
             <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>write_all</span>(<span class='ident'>msg2</span>));
         });
 
@@ -1238,7 +1238,7 @@
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>write_all</span>(<span class='ident'>msg1</span>));
         <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> <span class='macro'>vec</span><span class='macro'>!</span>[];
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>read_to_end</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg2</span>, <span class='ident'>buf</span>);
+        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg2</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
         <span class='ident'>drop</span>(<span class='ident'>stream</span>);
 
         <span class='ident'>thread</span>.<span class='ident'>join</span>();
@@ -1263,9 +1263,9 @@
 
         <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> [<span class='number'>0</span>; <span class='number'>5</span>];
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream</span>.<span class='ident'>read</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg1</span>, <span class='ident'>buf</span>);
+        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg1</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
         <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>stream2</span>.<span class='ident'>read</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>buf</span>));
-        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='ident'>msg2</span>, <span class='ident'>buf</span>);
+        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='kw-2'>&amp;</span><span class='ident'>msg2</span>[..], <span class='kw-2'>&amp;</span><span class='ident'>buf</span>[..]);
 
         <span class='ident'>thread</span>.<span class='ident'>join</span>();
     }
@@ -1349,13 +1349,13 @@
     
 
     <script>
-        window.rootPath = "../../../";
+        window.rootPath = "../../";
         window.currentCrate = "unix_socket";
         window.playgroundUrl = "";
     </script>
-    <script src="../../../jquery.js"></script>
-    <script src="../../../main.js"></script>
+    <script src="../../jquery.js"></script>
+    <script src="../../main.js"></script>
     
-    <script async src="../../../search-index.js"></script>
+    <script async src="../../search-index.js"></script>
 </body>
 </html>
