@@ -676,12 +676,13 @@
 <span id="634">634</span>
 </pre><pre class='rust '>
 <span class='doccomment'>//! Support for Unix domain socket clients and servers.</span>
-<span class='attribute'>#<span class='op'>!</span>[<span class='ident'>feature</span>(<span class='ident'>io</span>, <span class='ident'>std_misc</span>, <span class='ident'>core</span>, <span class='ident'>debug_builders</span>, <span class='ident'>io_ext</span>)]</span>
+<span class='attribute'>#<span class='op'>!</span>[<span class='ident'>feature</span>(<span class='ident'>io</span>, <span class='ident'>core</span>, <span class='ident'>debug_builders</span>, <span class='ident'>io_ext</span>, <span class='ident'>convert</span>)]</span>
 <span class='attribute'>#<span class='op'>!</span>[<span class='ident'>warn</span>(<span class='ident'>missing_docs</span>)]</span>
 <span class='attribute'>#<span class='op'>!</span>[<span class='ident'>doc</span>(<span class='ident'>html_root_url</span><span class='op'>=</span><span class='string'>&quot;https://sfackler.github.io/rust-unix-socket/doc&quot;</span>)]</span>
 
 <span class='kw'>extern</span> <span class='kw'>crate</span> <span class='ident'>libc</span>;
 
+<span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>convert</span>::<span class='ident'>AsRef</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>cmp</span>::{<span class='self'>self</span>, <span class='ident'>Ordering</span>};
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>ffi</span>::{<span class='ident'>OsStr</span>, <span class='ident'>AsOsStr</span>};
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>io</span>;
@@ -691,7 +692,6 @@
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>num</span>::<span class='ident'>Int</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>os</span>::<span class='ident'>unix</span>::<span class='ident'>io</span>::{<span class='ident'>Fd</span>, <span class='ident'>AsRawFd</span>};
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>os</span>::<span class='ident'>unix</span>::<span class='ident'>ffi</span>::<span class='ident'>OsStrExt</span>;
-<span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>path</span>::<span class='ident'>AsPath</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>fmt</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>path</span>::<span class='ident'>Path</span>;
 
@@ -740,12 +740,12 @@
     }
 }
 
-<span class='kw'>unsafe</span> <span class='kw'>fn</span> <span class='ident'>sockaddr_un</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsPath</span><span class='op'>&gt;</span>(<span class='ident'>path</span>: <span class='ident'>P</span>)
+<span class='kw'>unsafe</span> <span class='kw'>fn</span> <span class='ident'>sockaddr_un</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsRef</span><span class='op'>&lt;</span><span class='ident'>Path</span><span class='op'>&gt;&gt;</span>(<span class='ident'>path</span>: <span class='ident'>P</span>)
         <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span>(<span class='ident'>libc</span>::<span class='ident'>sockaddr_un</span>, <span class='ident'>libc</span>::<span class='ident'>socklen_t</span>)<span class='op'>&gt;</span> {
     <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>addr</span>: <span class='ident'>libc</span>::<span class='ident'>sockaddr_un</span> <span class='op'>=</span> <span class='ident'>mem</span>::<span class='ident'>zeroed</span>();
     <span class='ident'>addr</span>.<span class='ident'>sun_family</span> <span class='op'>=</span> <span class='ident'>libc</span>::<span class='ident'>AF_UNIX</span> <span class='kw'>as</span> <span class='ident'>libc</span>::<span class='ident'>sa_family_t</span>;
 
-    <span class='kw'>let</span> <span class='ident'>bytes</span> <span class='op'>=</span> <span class='ident'>path</span>.<span class='ident'>as_path</span>().<span class='ident'>as_os_str</span>().<span class='ident'>as_bytes</span>();
+    <span class='kw'>let</span> <span class='ident'>bytes</span> <span class='op'>=</span> <span class='ident'>path</span>.<span class='ident'>as_ref</span>().<span class='ident'>as_os_str</span>().<span class='ident'>as_bytes</span>();
 
     <span class='kw'>match</span> (<span class='ident'>bytes</span>.<span class='ident'>get</span>(<span class='number'>0</span>), <span class='ident'>bytes</span>.<span class='ident'>len</span>().<span class='ident'>cmp</span>(<span class='kw-2'>&amp;</span><span class='ident'>addr</span>.<span class='ident'>sun_path</span>.<span class='ident'>len</span>())) {
         <span class='comment'>// Abstract paths don&#39;t need a null terminator</span>
@@ -851,8 +851,8 @@
         <span class='kw'>let</span> <span class='ident'>path</span> <span class='op'>=</span> <span class='kw'>unsafe</span> { <span class='ident'>mem</span>::<span class='ident'>transmute</span>::<span class='op'>&lt;</span><span class='kw-2'>&amp;</span>[<span class='ident'>libc</span>::<span class='ident'>c_char</span>], <span class='kw-2'>&amp;</span>[<span class='ident'>u8</span>]<span class='op'>&gt;</span>(<span class='kw-2'>&amp;</span><span class='self'>self</span>.<span class='ident'>addr</span>.<span class='ident'>sun_path</span>) };
         <span class='kw'>match</span> <span class='self'>self</span>.<span class='ident'>kind</span>() {
             <span class='ident'>AddressKind</span>::<span class='ident'>Unnamed</span> <span class='op'>=&gt;</span> <span class='prelude-val'>None</span>,
-            <span class='ident'>AddressKind</span>::<span class='ident'>Abstract</span> <span class='op'>=&gt;</span> <span class='prelude-val'>Some</span>(<span class='ident'>OsStr</span>::<span class='ident'>from_bytes</span>(<span class='kw-2'>&amp;</span><span class='ident'>path</span>[<span class='number'>1</span>..<span class='ident'>len</span>]).<span class='ident'>as_path</span>()),
-            <span class='ident'>AddressKind</span>::<span class='ident'>Pathname</span> <span class='op'>=&gt;</span> <span class='prelude-val'>Some</span>(<span class='ident'>OsStr</span>::<span class='ident'>from_bytes</span>(<span class='kw-2'>&amp;</span><span class='ident'>path</span>[..<span class='ident'>len</span> <span class='op'>-</span> <span class='number'>1</span>]).<span class='ident'>as_path</span>()),
+            <span class='ident'>AddressKind</span>::<span class='ident'>Abstract</span> <span class='op'>=&gt;</span> <span class='prelude-val'>Some</span>(<span class='ident'>OsStr</span>::<span class='ident'>from_bytes</span>(<span class='kw-2'>&amp;</span><span class='ident'>path</span>[<span class='number'>1</span>..<span class='ident'>len</span>]).<span class='ident'>as_ref</span>()),
+            <span class='ident'>AddressKind</span>::<span class='ident'>Pathname</span> <span class='op'>=&gt;</span> <span class='prelude-val'>Some</span>(<span class='ident'>OsStr</span>::<span class='ident'>from_bytes</span>(<span class='kw-2'>&amp;</span><span class='ident'>path</span>[..<span class='ident'>len</span> <span class='op'>-</span> <span class='number'>1</span>]).<span class='ident'>as_ref</span>()),
         }
     }
 }
@@ -906,7 +906,7 @@
     <span class='doccomment'>/// begins with a null byte, it will be interpreted as an &quot;abstract&quot;</span>
     <span class='doccomment'>/// address. Otherwise, it will be interpreted as a &quot;pathname&quot; address,</span>
     <span class='doccomment'>/// corresponding to a path on the filesystem.</span>
-    <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>connect</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsPath</span><span class='op'>&gt;</span>(<span class='ident'>path</span>: <span class='ident'>P</span>) <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span><span class='ident'>UnixStream</span><span class='op'>&gt;</span> {
+    <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>connect</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsRef</span><span class='op'>&lt;</span><span class='ident'>Path</span><span class='op'>&gt;&gt;</span>(<span class='ident'>path</span>: <span class='ident'>P</span>) <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span><span class='ident'>UnixStream</span><span class='op'>&gt;</span> {
         <span class='kw'>unsafe</span> {
             <span class='kw'>let</span> <span class='ident'>inner</span> <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>Inner</span>::<span class='ident'>new</span>());
             <span class='kw'>let</span> (<span class='ident'>addr</span>, <span class='ident'>len</span>) <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>sockaddr_un</span>(<span class='ident'>path</span>));
@@ -1047,7 +1047,7 @@
     <span class='doccomment'>/// begins with a null byte, it will be interpreted as an &quot;abstract&quot;</span>
     <span class='doccomment'>/// address. Otherwise, it will be interpreted as a &quot;pathname&quot; address,</span>
     <span class='doccomment'>/// corresponding to a path on the filesystem.</span>
-    <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>bind</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsPath</span><span class='op'>&gt;</span>(<span class='ident'>path</span>: <span class='ident'>P</span>) <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span><span class='ident'>UnixListener</span><span class='op'>&gt;</span> {
+    <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>bind</span><span class='op'>&lt;</span><span class='ident'>P</span>: <span class='ident'>AsRef</span><span class='op'>&lt;</span><span class='ident'>Path</span><span class='op'>&gt;&gt;</span>(<span class='ident'>path</span>: <span class='ident'>P</span>) <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span><span class='ident'>UnixListener</span><span class='op'>&gt;</span> {
         <span class='kw'>unsafe</span> {
             <span class='kw'>let</span> <span class='ident'>inner</span> <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>Inner</span>::<span class='ident'>new</span>());
             <span class='kw'>let</span> (<span class='ident'>addr</span>, <span class='ident'>len</span>) <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>sockaddr_un</span>(<span class='ident'>path</span>));
