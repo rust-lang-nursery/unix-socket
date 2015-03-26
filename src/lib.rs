@@ -1,10 +1,11 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, std_misc, core, debug_builders, io_ext)]
+#![feature(io, core, debug_builders, io_ext, convert)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
 extern crate libc;
 
+use std::convert::AsRef;
 use std::cmp::{self, Ordering};
 use std::ffi::{OsStr, AsOsStr};
 use std::io;
@@ -14,7 +15,6 @@ use std::mem;
 use std::num::Int;
 use std::os::unix::io::{Fd, AsRawFd};
 use std::os::unix::ffi::OsStrExt;
-use std::path::AsPath;
 use std::fmt;
 use std::path::Path;
 
@@ -63,12 +63,12 @@ impl Inner {
     }
 }
 
-unsafe fn sockaddr_un<P: AsPath>(path: P)
+unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
         -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
     let mut addr: libc::sockaddr_un = mem::zeroed();
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
 
-    let bytes = path.as_path().as_os_str().as_bytes();
+    let bytes = path.as_ref().as_os_str().as_bytes();
 
     match (bytes.get(0), bytes.len().cmp(&addr.sun_path.len())) {
         // Abstract paths don't need a null terminator
@@ -174,8 +174,8 @@ impl SocketAddr {
         let path = unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&self.addr.sun_path) };
         match self.kind() {
             AddressKind::Unnamed => None,
-            AddressKind::Abstract => Some(OsStr::from_bytes(&path[1..len]).as_path()),
-            AddressKind::Pathname => Some(OsStr::from_bytes(&path[..len - 1]).as_path()),
+            AddressKind::Abstract => Some(OsStr::from_bytes(&path[1..len]).as_ref()),
+            AddressKind::Pathname => Some(OsStr::from_bytes(&path[..len - 1]).as_ref()),
         }
     }
 }
@@ -229,7 +229,7 @@ impl UnixStream {
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
-    pub fn connect<P: AsPath>(path: P) -> io::Result<UnixStream> {
+    pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixStream> {
         unsafe {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
@@ -370,7 +370,7 @@ impl UnixListener {
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
-    pub fn bind<P: AsPath>(path: P) -> io::Result<UnixListener> {
+    pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
