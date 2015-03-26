@@ -1,6 +1,6 @@
 [package]
 name = "unix_socket"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Steven Fackler <sfackler@gmail.com>"]
 license = "MIT"
 description = "POSIX domain socket bindings"
