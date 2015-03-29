@@ -1,5 +1,5 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, core, debug_builders, io_ext, convert)]
+#![feature(io, core, debug_builders, io_ext, convert, slice_patterns)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
