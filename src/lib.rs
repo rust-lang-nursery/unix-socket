@@ -1,10 +1,12 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, core, debug_builders, io_ext, convert, slice_patterns)]
+#![feature(io, core, io_ext, convert, slice_patterns)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
+extern crate debug_builders;
 extern crate libc;
 
+use debug_builders::DebugStruct;
 use std::convert::AsRef;
 use std::cmp::{self, Ordering};
 use std::ffi::{OsStr, AsOsStr};
@@ -213,7 +215,7 @@ pub struct UnixStream {
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("UnixStream")
+        DebugStruct::new(fmt, "UnixStream")
             .field("fd", &self.inner.0)
             .field("local", &DebugErr(self.local_addr()))
             .field("peer", &DebugErr(self.peer_addr()))
@@ -354,7 +356,7 @@ pub struct UnixListener {
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("UnixListener")
+        DebugStruct::new(fmt, "UnixListener")
             .field("fd", &self.inner.0)
             .field("local", &DebugErr(self.local_addr()))
             .finish()
