@@ -672,13 +672,8 @@
 <span id="630">630</span>
 <span id="631">631</span>
 <span id="632">632</span>
-<span id="633">633</span>
-<span id="634">634</span>
-<span id="635">635</span>
-<span id="636">636</span>
 </pre><pre class='rust '>
 <span class='doccomment'>//! Support for Unix domain socket clients and servers.</span>
-<span class='attribute'>#<span class='op'>!</span>[<span class='ident'>feature</span>(<span class='ident'>io</span>, <span class='ident'>core</span>, <span class='ident'>io_ext</span>, <span class='ident'>convert</span>, <span class='ident'>slice_patterns</span>)]</span>
 <span class='attribute'>#<span class='op'>!</span>[<span class='ident'>warn</span>(<span class='ident'>missing_docs</span>)]</span>
 <span class='attribute'>#<span class='op'>!</span>[<span class='ident'>doc</span>(<span class='ident'>html_root_url</span><span class='op'>=</span><span class='string'>&quot;https://sfackler.github.io/rust-unix-socket/doc&quot;</span>)]</span>
 
@@ -693,8 +688,7 @@
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>net</span>::<span class='ident'>Shutdown</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>iter</span>::<span class='ident'>IntoIterator</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>mem</span>;
-<span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>num</span>::<span class='ident'>Int</span>;
-<span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>os</span>::<span class='ident'>unix</span>::<span class='ident'>io</span>::{<span class='ident'>Fd</span>, <span class='ident'>AsRawFd</span>};
+<span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>os</span>::<span class='ident'>unix</span>::<span class='ident'>io</span>::{<span class='ident'>RawFd</span>, <span class='ident'>AsRawFd</span>};
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>os</span>::<span class='ident'>unix</span>::<span class='ident'>ffi</span>::<span class='ident'>OsStrExt</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>fmt</span>;
 <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>path</span>::<span class='ident'>Path</span>;
@@ -713,7 +707,7 @@
     }
 }
 
-<span class='kw'>struct</span> <span class='ident'>Inner</span>(<span class='ident'>Fd</span>);
+<span class='kw'>struct</span> <span class='ident'>Inner</span>(<span class='ident'>RawFd</span>);
 
 <span class='kw'>impl</span> <span class='ident'>Drop</span> <span class='kw'>for</span> <span class='ident'>Inner</span> {
     <span class='kw'>fn</span> <span class='ident'>drop</span>(<span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='self'>self</span>) {
@@ -733,14 +727,14 @@
         }
     }
 
-    <span class='kw'>unsafe</span> <span class='kw'>fn</span> <span class='ident'>new_pair</span>() <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span>[<span class='ident'>Inner</span>; <span class='number'>2</span>]<span class='op'>&gt;</span> {
+    <span class='kw'>unsafe</span> <span class='kw'>fn</span> <span class='ident'>new_pair</span>() <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span>(<span class='ident'>Inner</span>, <span class='ident'>Inner</span>)<span class='op'>&gt;</span> {
         <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>fds</span> <span class='op'>=</span> [<span class='number'>0</span>, <span class='number'>0</span>];
         <span class='kw'>let</span> <span class='ident'>res</span> <span class='op'>=</span> <span class='ident'>socketpair</span>(<span class='ident'>libc</span>::<span class='ident'>AF_UNIX</span>, <span class='ident'>libc</span>::<span class='ident'>SOCK_STREAM</span>, <span class='number'>0</span>, <span class='kw-2'>&amp;</span><span class='kw-2'>mut</span> <span class='ident'>fds</span>);
         <span class='kw'>if</span> <span class='ident'>res</span> <span class='op'>&lt;</span> <span class='number'>0</span> {
             <span class='kw'>return</span> <span class='prelude-val'>Err</span>(<span class='ident'>io</span>::<span class='ident'>Error</span>::<span class='ident'>last_os_error</span>());
         }
         <span class='macro'>debug_assert_eq</span><span class='macro'>!</span>(<span class='ident'>res</span>, <span class='number'>0</span>);
-        <span class='prelude-val'>Ok</span>([<span class='ident'>Inner</span>(<span class='ident'>fds</span>[<span class='number'>0</span>]), <span class='ident'>Inner</span>(<span class='ident'>fds</span>[<span class='number'>1</span>])])
+        <span class='prelude-val'>Ok</span>((<span class='ident'>Inner</span>(<span class='ident'>fds</span>[<span class='number'>0</span>]), <span class='ident'>Inner</span>(<span class='ident'>fds</span>[<span class='number'>1</span>])))
     }
 }
 
@@ -755,13 +749,11 @@
         <span class='comment'>// Abstract paths don&#39;t need a null terminator</span>
         (<span class='prelude-val'>Some</span>(<span class='kw-2'>&amp;</span><span class='number'>0</span>), <span class='ident'>Ordering</span>::<span class='ident'>Greater</span>) <span class='op'>=&gt;</span> {
             <span class='kw'>return</span> <span class='prelude-val'>Err</span>(<span class='ident'>io</span>::<span class='ident'>Error</span>::<span class='ident'>new</span>(<span class='ident'>io</span>::<span class='ident'>ErrorKind</span>::<span class='ident'>InvalidInput</span>,
-                                      <span class='string'>&quot;path must be no longer than SUN_LEN&quot;</span>,
-                                      <span class='prelude-val'>None</span>))
+                                      <span class='string'>&quot;path must be no longer than SUN_LEN&quot;</span>))
         }
         (_, <span class='ident'>Ordering</span>::<span class='ident'>Greater</span>) <span class='op'>|</span> (_, <span class='ident'>Ordering</span>::<span class='ident'>Equal</span>) <span class='op'>=&gt;</span> {
             <span class='kw'>return</span> <span class='prelude-val'>Err</span>(<span class='ident'>io</span>::<span class='ident'>Error</span>::<span class='ident'>new</span>(<span class='ident'>io</span>::<span class='ident'>ErrorKind</span>::<span class='ident'>InvalidInput</span>,
-                                      <span class='string'>&quot;path must be shorter than SUN_LEN&quot;</span>,
-                                      <span class='prelude-val'>None</span>));
+                                      <span class='string'>&quot;path must be shorter than SUN_LEN&quot;</span>));
         }
         _ <span class='op'>=&gt;</span> {}
     }
@@ -807,7 +799,7 @@
 }
 
 <span class='kw'>impl</span> <span class='ident'>SocketAddr</span> {
-    <span class='kw'>fn</span> <span class='ident'>new</span>(<span class='ident'>fd</span>: <span class='ident'>Fd</span>,
+    <span class='kw'>fn</span> <span class='ident'>new</span>(<span class='ident'>fd</span>: <span class='ident'>RawFd</span>,
            <span class='ident'>f</span>: <span class='kw'>unsafe</span> <span class='kw'>extern</span> <span class='string'>&quot;system&quot;</span> <span class='kw'>fn</span>(<span class='ident'>libc</span>::<span class='ident'>c_int</span>,
                                         <span class='op'>*</span><span class='kw-2'>mut</span> <span class='ident'>libc</span>::<span class='ident'>sockaddr</span>,
                                         <span class='op'>*</span><span class='kw-2'>mut</span> <span class='ident'>libc</span>::<span class='ident'>socklen_t</span>) <span class='op'>-&gt;</span> <span class='ident'>libc</span>::<span class='ident'>c_int</span>)
@@ -823,8 +815,7 @@
 
             <span class='kw'>if</span> <span class='ident'>addr</span>.<span class='ident'>sun_family</span> <span class='op'>!=</span> <span class='ident'>libc</span>::<span class='ident'>AF_UNIX</span> <span class='kw'>as</span> <span class='ident'>libc</span>::<span class='ident'>sa_family_t</span> {
                 <span class='kw'>return</span> <span class='prelude-val'>Err</span>(<span class='ident'>io</span>::<span class='ident'>Error</span>::<span class='ident'>new</span>(<span class='ident'>io</span>::<span class='ident'>ErrorKind</span>::<span class='ident'>InvalidInput</span>,
-                                          <span class='string'>&quot;file descriptor did not correspond to a Unix socket&quot;</span>,
-                                          <span class='prelude-val'>None</span>));
+                                          <span class='string'>&quot;file descriptor did not correspond to a Unix socket&quot;</span>));
             }
 
             <span class='prelude-val'>Ok</span>(<span class='ident'>SocketAddr</span> {
@@ -931,10 +922,10 @@
     <span class='doccomment'>/// Create an unnamed pair of connected sockets.</span>
     <span class='doccomment'>///</span>
     <span class='doccomment'>/// Returns two `UnixStream`s which are connected to each other.</span>
-    <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>unnamed</span>() <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span>[<span class='ident'>UnixStream</span>; <span class='number'>2</span>]<span class='op'>&gt;</span> {
+    <span class='kw'>pub</span> <span class='kw'>fn</span> <span class='ident'>unnamed</span>() <span class='op'>-&gt;</span> <span class='ident'>io</span>::<span class='prelude-ty'>Result</span><span class='op'>&lt;</span>(<span class='ident'>UnixStream</span>, <span class='ident'>UnixStream</span>)<span class='op'>&gt;</span> {
         <span class='kw'>unsafe</span> {
-            <span class='kw'>let</span> [<span class='ident'>i1</span>, <span class='ident'>i2</span>] <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>Inner</span>::<span class='ident'>new_pair</span>());
-            <span class='prelude-val'>Ok</span>([<span class='ident'>UnixStream</span> { <span class='ident'>inner</span>: <span class='ident'>i1</span> }, <span class='ident'>UnixStream</span> { <span class='ident'>inner</span>: <span class='ident'>i2</span> }])
+            <span class='kw'>let</span> (<span class='ident'>i1</span>, <span class='ident'>i2</span>) <span class='op'>=</span> <span class='macro'>try</span><span class='macro'>!</span>(<span class='ident'>Inner</span>::<span class='ident'>new_pair</span>());
+            <span class='prelude-val'>Ok</span>((<span class='ident'>UnixStream</span> { <span class='ident'>inner</span>: <span class='ident'>i1</span> }, <span class='ident'>UnixStream</span> { <span class='ident'>inner</span>: <span class='ident'>i2</span> }))
         }
     }
 
@@ -1023,7 +1014,7 @@
 }
 
 <span class='kw'>impl</span> <span class='ident'>AsRawFd</span> <span class='kw'>for</span> <span class='ident'>UnixStream</span> {
-    <span class='kw'>fn</span> <span class='ident'>as_raw_fd</span>(<span class='kw-2'>&amp;</span><span class='self'>self</span>) <span class='op'>-&gt;</span> <span class='ident'>Fd</span> {
+    <span class='kw'>fn</span> <span class='ident'>as_raw_fd</span>(<span class='kw-2'>&amp;</span><span class='self'>self</span>) <span class='op'>-&gt;</span> <span class='ident'>RawFd</span> {
         <span class='self'>self</span>.<span class='ident'>inner</span>.<span class='number'>0</span>
     }
 }
@@ -1120,7 +1111,7 @@
 }
 
 <span class='kw'>impl</span> <span class='ident'>AsRawFd</span> <span class='kw'>for</span> <span class='ident'>UnixListener</span> {
-    <span class='kw'>fn</span> <span class='ident'>as_raw_fd</span>(<span class='kw-2'>&amp;</span><span class='self'>self</span>) <span class='op'>-&gt;</span> <span class='ident'>Fd</span> {
+    <span class='kw'>fn</span> <span class='ident'>as_raw_fd</span>(<span class='kw-2'>&amp;</span><span class='self'>self</span>) <span class='op'>-&gt;</span> <span class='ident'>RawFd</span> {
         <span class='self'>self</span>.<span class='ident'>inner</span>.<span class='number'>0</span>
     }
 }
@@ -1150,17 +1141,18 @@
     }
 
     <span class='kw'>fn</span> <span class='ident'>size_hint</span>(<span class='kw-2'>&amp;</span><span class='self'>self</span>) <span class='op'>-&gt;</span> (<span class='ident'>usize</span>, <span class='prelude-ty'>Option</span><span class='op'>&lt;</span><span class='ident'>usize</span><span class='op'>&gt;</span>) {
-        (<span class='ident'>Int</span>::<span class='ident'>max_value</span>(), <span class='prelude-val'>None</span>)
+        (<span class='ident'>usize</span>::<span class='ident'>max_value</span>(), <span class='prelude-val'>None</span>)
     }
 }
 
 <span class='attribute'>#[<span class='ident'>cfg</span>(<span class='ident'>test</span>)]</span>
 <span class='kw'>mod</span> <span class='ident'>test</span> {
-    <span class='kw'>extern</span> <span class='kw'>crate</span> <span class='ident'>temporary</span>;
+    <span class='kw'>extern</span> <span class='kw'>crate</span> <span class='ident'>tempdir</span>;
 
     <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>thread</span>;
     <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>io</span>;
     <span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>io</span>::<span class='ident'>prelude</span>::<span class='op'>*</span>;
+    <span class='kw'>use</span> <span class='self'>self</span>::<span class='ident'>tempdir</span>::<span class='ident'>TempDir</span>;
 
     <span class='kw'>use</span> {<span class='ident'>UnixListener</span>, <span class='ident'>UnixStream</span>};
 
@@ -1175,7 +1167,7 @@
 
     <span class='attribute'>#[<span class='ident'>test</span>]</span>
     <span class='kw'>fn</span> <span class='ident'>basic</span>() {
-        <span class='kw'>let</span> <span class='ident'>dir</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>temporary</span>::<span class='ident'>Directory</span>::<span class='ident'>new</span>(<span class='string'>&quot;unix_socket&quot;</span>));
+        <span class='kw'>let</span> <span class='ident'>dir</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>TempDir</span>::<span class='ident'>new</span>(<span class='string'>&quot;unix_socket&quot;</span>));
         <span class='kw'>let</span> <span class='ident'>socket_path</span> <span class='op'>=</span> <span class='ident'>dir</span>.<span class='ident'>path</span>().<span class='ident'>join</span>(<span class='string'>&quot;sock&quot;</span>);
         <span class='kw'>let</span> <span class='ident'>msg1</span> <span class='op'>=</span> <span class='string'>b&quot;hello&quot;</span>;
         <span class='kw'>let</span> <span class='ident'>msg2</span> <span class='op'>=</span> <span class='string'>b&quot;world!&quot;</span>;
@@ -1204,7 +1196,7 @@
         <span class='kw'>let</span> <span class='ident'>msg1</span> <span class='op'>=</span> <span class='string'>b&quot;hello&quot;</span>;
         <span class='kw'>let</span> <span class='ident'>msg2</span> <span class='op'>=</span> <span class='string'>b&quot;world!&quot;</span>;
 
-        <span class='kw'>let</span> [<span class='kw-2'>mut</span> <span class='ident'>s1</span>, <span class='kw-2'>mut</span> <span class='ident'>s2</span>] <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>UnixStream</span>::<span class='ident'>unnamed</span>());
+        <span class='kw'>let</span> (<span class='kw-2'>mut</span> <span class='ident'>s1</span>, <span class='kw-2'>mut</span> <span class='ident'>s2</span>) <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>UnixStream</span>::<span class='ident'>unnamed</span>());
         <span class='kw'>let</span> <span class='ident'>thread</span> <span class='op'>=</span> <span class='ident'>thread</span>::<span class='ident'>scoped</span>(<span class='kw'>move</span> <span class='op'>||</span> {
             <span class='comment'>// s1 must be moved in or the test will hang!</span>
             <span class='kw'>let</span> <span class='kw-2'>mut</span> <span class='ident'>buf</span> <span class='op'>=</span> [<span class='number'>0</span>; <span class='number'>5</span>];
@@ -1250,7 +1242,7 @@
 
     <span class='attribute'>#[<span class='ident'>test</span>]</span>
     <span class='kw'>fn</span> <span class='ident'>try_clone</span>() {
-        <span class='kw'>let</span> <span class='ident'>dir</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>temporary</span>::<span class='ident'>Directory</span>::<span class='ident'>new</span>(<span class='string'>&quot;unix_socket&quot;</span>));
+        <span class='kw'>let</span> <span class='ident'>dir</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>TempDir</span>::<span class='ident'>new</span>(<span class='string'>&quot;unix_socket&quot;</span>));
         <span class='kw'>let</span> <span class='ident'>socket_path</span> <span class='op'>=</span> <span class='ident'>dir</span>.<span class='ident'>path</span>().<span class='ident'>join</span>(<span class='string'>&quot;sock&quot;</span>);
         <span class='kw'>let</span> <span class='ident'>msg1</span> <span class='op'>=</span> <span class='string'>b&quot;hello&quot;</span>;
         <span class='kw'>let</span> <span class='ident'>msg2</span> <span class='op'>=</span> <span class='string'>b&quot;world&quot;</span>;
@@ -1276,7 +1268,7 @@
 
     <span class='attribute'>#[<span class='ident'>test</span>]</span>
     <span class='kw'>fn</span> <span class='ident'>iter</span>() {
-        <span class='kw'>let</span> <span class='ident'>dir</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>temporary</span>::<span class='ident'>Directory</span>::<span class='ident'>new</span>(<span class='string'>&quot;unix_socket&quot;</span>));
+        <span class='kw'>let</span> <span class='ident'>dir</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>TempDir</span>::<span class='ident'>new</span>(<span class='string'>&quot;unix_socket&quot;</span>));
         <span class='kw'>let</span> <span class='ident'>socket_path</span> <span class='op'>=</span> <span class='ident'>dir</span>.<span class='ident'>path</span>().<span class='ident'>join</span>(<span class='string'>&quot;sock&quot;</span>);
 
         <span class='kw'>let</span> <span class='ident'>listener</span> <span class='op'>=</span> <span class='macro'>or_panic</span><span class='macro'>!</span>(<span class='ident'>UnixListener</span>::<span class='ident'>bind</span>(<span class='kw-2'>&amp;</span><span class='ident'>socket_path</span>));
