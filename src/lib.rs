@@ -1,5 +1,4 @@
 //! Support for Unix domain socket clients and servers.
-#![feature(io, core, io_ext, convert, slice_patterns)]
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc")]
 
@@ -14,8 +13,7 @@ use std::io;
 use std::net::Shutdown;
 use std::iter::IntoIterator;
 use std::mem;
-use std::num::Int;
-use std::os::unix::io::{Fd, AsRawFd};
+use std::os::unix::io::{RawFd, AsRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::fmt;
 use std::path::Path;
@@ -34,7 +32,7 @@ fn sun_path_offset() -> usize {
     }
 }
 
-struct Inner(Fd);
+struct Inner(RawFd);
 
 impl Drop for Inner {
     fn drop(&mut self) {
@@ -54,14 +52,14 @@ impl Inner {
         }
     }
 
-    unsafe fn new_pair() -> io::Result<[Inner; 2]> {
+    unsafe fn new_pair() -> io::Result<(Inner, Inner)> {
         let mut fds = [0, 0];
         let res = socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, &mut fds);
         if res < 0 {
             return Err(io::Error::last_os_error());
         }
         debug_assert_eq!(res, 0);
-        Ok([Inner(fds[0]), Inner(fds[1])])
+        Ok((Inner(fds[0]), Inner(fds[1])))
     }
 }
 
@@ -76,13 +74,11 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
         // Abstract paths don't need a null terminator
         (Some(&0), Ordering::Greater) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "path must be no longer than SUN_LEN",
-                                      None))
+                                      "path must be no longer than SUN_LEN"))
         }
         (_, Ordering::Greater) | (_, Ordering::Equal) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "path must be shorter than SUN_LEN",
-                                      None));
+                                      "path must be shorter than SUN_LEN"));
         }
         _ => {}
     }
@@ -128,7 +124,7 @@ impl Clone for SocketAddr {
 }
 
 impl SocketAddr {
-    fn new(fd: Fd,
+    fn new(fd: RawFd,
            f: unsafe extern "system" fn(libc::c_int,
                                         *mut libc::sockaddr,
                                         *mut libc::socklen_t) -> libc::c_int)
@@ -144,8 +140,7 @@ impl SocketAddr {
 
             if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                          "file descriptor did not correspond to a Unix socket",
-                                          None));
+                                          "file descriptor did not correspond to a Unix socket"));
             }
 
             Ok(SocketAddr {
@@ -252,10 +247,10 @@ impl UnixStream {
     /// Create an unnamed pair of connected sockets.
     ///
     /// Returns two `UnixStream`s which are connected to each other.
-    pub fn unnamed() -> io::Result<[UnixStream; 2]> {
+    pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
         unsafe {
-            let [i1, i2] = try!(Inner::new_pair());
-            Ok([UnixStream { inner: i1 }, UnixStream { inner: i2 }])
+            let (i1, i2) = try!(Inner::new_pair());
+            Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
         }
     }
 
@@ -344,7 +339,7 @@ impl io::Write for UnixStream {
 }
 
 impl AsRawFd for UnixStream {
-    fn as_raw_fd(&self) -> Fd {
+    fn as_raw_fd(&self) -> RawFd {
         self.inner.0
     }
 }
@@ -441,7 +436,7 @@ impl UnixListener {
 }
 
 impl AsRawFd for UnixListener {
-    fn as_raw_fd(&self) -> Fd {
+    fn as_raw_fd(&self) -> RawFd {
         self.inner.0
     }
 }
@@ -471,17 +466,18 @@ impl<'a> Iterator for Incoming<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (Int::max_value(), None)
+        (usize::max_value(), None)
     }
 }
 
 #[cfg(test)]
 mod test {
-    extern crate temporary;
+    extern crate tempdir;
 
     use std::thread;
     use std::io;
     use std::io::prelude::*;
+    use self::tempdir::TempDir;
 
     use {UnixListener, UnixStream};
 
@@ -496,7 +492,7 @@ mod test {
 
     #[test]
     fn basic() {
-        let dir = or_panic!(temporary::Directory::new("unix_socket"));
+        let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
         let msg1 = b"hello";
         let msg2 = b"world!";
@@ -525,7 +521,7 @@ mod test {
         let msg1 = b"hello";
         let msg2 = b"world!";
 
-        let [mut s1, mut s2] = or_panic!(UnixStream::unnamed());
+        let (mut s1, mut s2) = or_panic!(UnixStream::unnamed());
         let thread = thread::scoped(move || {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
@@ -571,7 +567,7 @@ mod test {
 
     #[test]
     fn try_clone() {
-        let dir = or_panic!(temporary::Directory::new("unix_socket"));
+        let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
         let msg1 = b"hello";
         let msg2 = b"world";
@@ -597,7 +593,7 @@ mod test {
 
     #[test]
     fn iter() {
-        let dir = or_panic!(temporary::Directory::new("unix_socket"));
+        let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
