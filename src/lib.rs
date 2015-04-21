@@ -158,7 +158,7 @@ impl SocketAddr {
     pub fn kind(&self) -> AddressKind {
         // OSX seems to return a len of 16 and a zeroed sun_path for unnamed addresses
         if self.len as usize == sun_path_offset() ||
-                (!cfg!(target_os = "linux") && self.addr.sun_path[0] == 0) {
+                (cfg!(not(target_os = "linux")) && self.addr.sun_path[0] == 0) {
             AddressKind::Unnamed
         } else if self.addr.sun_path[0] == 0 {
             AddressKind::Abstract
@@ -502,7 +502,7 @@ mod test {
         let msg2 = b"world!";
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
-        let thread = thread::scoped(|| {
+        let thread = thread::spawn(move || {
             let mut stream = or_panic!(listener.accept());
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
@@ -517,7 +517,7 @@ mod test {
         assert_eq!(&msg2[..], &buf[..]);
         drop(stream);
 
-        thread.join();
+        thread.join().unwrap();
     }
 
     #[test]
@@ -526,7 +526,7 @@ mod test {
         let msg2 = b"world!";
 
         let (mut s1, mut s2) = or_panic!(UnixStream::unnamed());
-        let thread = thread::scoped(move || {
+        let thread = thread::spawn(move || {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
             or_panic!(s1.read(&mut buf));
@@ -540,7 +540,7 @@ mod test {
         assert_eq!(&msg2[..], &buf[..]);
         drop(s2);
 
-        thread.join();
+        thread.join().unwrap();
     }
 
     #[test]
@@ -551,7 +551,7 @@ mod test {
         let msg2 = b"world!";
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
-        let thread = thread::scoped(|| {
+        let thread = thread::spawn(move || {
             let mut stream = or_panic!(listener.accept());
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
@@ -566,7 +566,7 @@ mod test {
         assert_eq!(&msg2[..], &buf[..]);
         drop(stream);
 
-        thread.join();
+        thread.join().unwrap();
     }
 
     #[test]
@@ -577,7 +577,7 @@ mod test {
         let msg2 = b"world";
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
-        let thread = thread::scoped(|| {
+        let thread = thread::spawn(move || {
             let mut stream = or_panic!(listener.accept());
             or_panic!(stream.write_all(msg1));
             or_panic!(stream.write_all(msg2));
@@ -592,7 +592,7 @@ mod test {
         or_panic!(stream2.read(&mut buf));
         assert_eq!(&msg2[..], &buf[..]);
 
-        thread.join();
+        thread.join().unwrap();
     }
 
     #[test]
@@ -601,7 +601,7 @@ mod test {
         let socket_path = dir.path().join("sock");
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
-        let thread = thread::scoped(|| {
+        let thread = thread::spawn(move || {
             for stream in listener.incoming().take(2) {
                 let mut stream = or_panic!(stream);
                 let mut buf = [0];
@@ -614,7 +614,7 @@ mod test {
             or_panic!(stream.write_all(&[0]));
         }
 
-        thread.join();
+        thread.join().unwrap();
     }
 
     #[test]
