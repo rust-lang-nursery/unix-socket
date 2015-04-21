@@ -1,4 +1,4 @@
-# rust-domain-socket
+# rust-unix-socket
 
 [![Build Status](https://travis-ci.org/sfackler/rust-unix-socket.svg?branch=master)](https://travis-ci.org/sfackler/rust-unix-socket)
 
