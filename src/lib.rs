@@ -28,6 +28,7 @@ extern "C" {
 
 fn sun_path_offset() -> usize {
     unsafe {
+        // Work with an actual instance of the type since using a null pointer is UB
         let addr: libc::sockaddr_un = mem::zeroed();
         let base = &addr as *const _ as usize;
         let path = &addr.sun_path as *const _ as usize;
