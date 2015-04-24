@@ -8,7 +8,7 @@ extern crate libc;
 use debug_builders::DebugStruct;
 use std::convert::AsRef;
 use std::cmp::{self, Ordering};
-use std::ffi::{OsStr, AsOsStr};
+use std::ffi::OsStr;
 use std::io;
 use std::net::Shutdown;
 use std::iter::IntoIterator;
