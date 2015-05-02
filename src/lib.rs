@@ -619,15 +619,16 @@ mod test {
 
     #[test]
     fn long_path() {
-        let socket_path = "asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasd\
-                           asdfasdfasdfadfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasd";
-        match UnixStream::connect(socket_path) {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let socket_path = dir.path().join("asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasd\
+                                           fasdfasasdfasdfasdasdfasdfasdfadfasdfasdfasdfasdfasdf");
+        match UnixStream::connect(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
             Err(e) => panic!("unexpected error {}", e),
             Ok(_) => panic!("unexpected success"),
         }
 
-        match UnixListener::bind(socket_path) {
+        match UnixListener::bind(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
             Err(e) => panic!("unexpected error {}", e),
             Ok(_) => panic!("unexpected success"),
