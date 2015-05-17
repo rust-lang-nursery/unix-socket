@@ -6,6 +6,7 @@ extern crate debug_builders;
 extern crate libc;
 
 use debug_builders::DebugStruct;
+use std::ascii;
 use std::convert::AsRef;
 use std::cmp::{self, Ordering};
 use std::ffi::OsStr;
@@ -101,15 +102,15 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
 
 /// The kind of an address associated with a Unix socket.
 #[derive(Debug, Clone, Copy)]
-pub enum AddressKind {
+pub enum AddressKind<'a> {
     /// An unnamed address.
     Unnamed,
     /// An address corresponding to a path on the filesystem.
-    Pathname,
+    Pathname(&'a Path),
     /// An address in an abstract namespace unrelated to the filesystem.
     ///
     /// Abstract addresses are a nonportable Linux extension.
-    Abstract,
+    Abstract(&'a [u8]),
 }
 
 /// An address associated with a Unix socket.
@@ -154,45 +155,41 @@ impl SocketAddr {
         }
     }
 
-    /// Returns the kind of the address.
-    pub fn kind(&self) -> AddressKind {
-        // OSX seems to return a len of 16 and a zeroed sun_path for unnamed addresses
-        if self.len as usize == sun_path_offset() ||
-                (cfg!(not(target_os = "linux")) && self.addr.sun_path[0] == 0) {
-            AddressKind::Unnamed
-        } else if self.addr.sun_path[0] == 0 {
-            AddressKind::Abstract
-        } else {
-            AddressKind::Pathname
-        }
-    }
-
     /// Returns the value of the address.
-    ///
-    /// Unnamed addresses do not have a value.
-    pub fn address(&self) -> Option<&Path> {
+    pub fn address<'a>(&'a self) -> AddressKind<'a> {
         let len = self.len as usize - sun_path_offset();
         let path = unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&self.addr.sun_path) };
-        match self.kind() {
-            AddressKind::Unnamed => None,
-            AddressKind::Abstract => Some(OsStr::from_bytes(&path[1..len]).as_ref()),
-            AddressKind::Pathname => Some(OsStr::from_bytes(&path[..len - 1]).as_ref()),
+
+        // OSX seems to return a len of 16 and a zeroed sun_path for unnamed addresses
+        if len == 0 || (cfg!(not(target_os = "linux")) && self.addr.sun_path[0] == 0) {
+            AddressKind::Unnamed
+        } else if self.addr.sun_path[0] == 0 {
+            AddressKind::Abstract(&path[1..len])
+        } else {
+            AddressKind::Pathname(OsStr::from_bytes(&path[..len - 1]).as_ref())
         }
     }
 }
 
 impl fmt::Debug for SocketAddr {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(address) = self.address() {
-            try!(write!(fmt, "{:?} ", address.display()));
+        match self.address() {
+            AddressKind::Unnamed => write!(fmt, "(unnamed)"),
+            AddressKind::Abstract(name) => write!(fmt, "{} (abstract)", AsciiEscaped(name)),
+            AddressKind::Pathname(path) => write!(fmt, "{:?} (pathname)", path)
         }
+    }
+}
 
-        let kind = match self.kind() {
-            AddressKind::Unnamed => "unnamed",
-            AddressKind::Pathname => "pathname",
-            AddressKind::Abstract => "abstract",
-        };
-        write!(fmt, "({})", kind)
+struct AsciiEscaped<'a>(&'a [u8]);
+
+impl<'a> fmt::Display for AsciiEscaped<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(fmt, "\""));
+        for byte in self.0.iter().cloned().flat_map(ascii::escape_default) {
+            try!(write!(fmt, "{}", byte as char));
+        }
+        write!(fmt, "\"")
     }
 }
 
