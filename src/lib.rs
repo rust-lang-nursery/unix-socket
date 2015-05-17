@@ -196,17 +196,6 @@ impl fmt::Debug for SocketAddr {
     }
 }
 
-struct DebugErr(io::Result<SocketAddr>);
-
-impl fmt::Debug for DebugErr {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.0 {
-            Ok(ref addr) => fmt::Debug::fmt(addr, fmt),
-            Err(ref err) => fmt::Display::fmt(err, fmt),
-        }
-    }
-}
-
 /// A stream which communicates over a Unix domain socket.
 ///
 /// # Examples
@@ -227,11 +216,15 @@ pub struct UnixStream {
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        DebugStruct::new(fmt, "UnixStream")
-            .field("fd", &self.inner.0)
-            .field("local", &DebugErr(self.local_addr()))
-            .field("peer", &DebugErr(self.peer_addr()))
-            .finish()
+        let mut builder = DebugStruct::new(fmt, "UnixStream")
+            .field("fd", &self.inner.0);
+        if let Ok(addr) = self.local_addr() {
+            builder = builder.field("local", &addr);
+        }
+        if let Ok(addr) = self.peer_addr() {
+            builder = builder.field("peer", &addr);
+        }
+        builder.finish()
     }
 }
 
@@ -398,10 +391,12 @@ pub struct UnixListener {
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        DebugStruct::new(fmt, "UnixListener")
-            .field("fd", &self.inner.0)
-            .field("local", &DebugErr(self.local_addr()))
-            .finish()
+        let mut builder = DebugStruct::new(fmt, "UnixListener")
+            .field("fd", &self.inner.0);
+        if let Ok(addr) = self.local_addr() {
+            builder = builder.field("local", &addr);
+        }
+        builder.finish()
     }
 }
 
