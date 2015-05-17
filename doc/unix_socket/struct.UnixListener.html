@@ -42,11 +42,42 @@
 
     <section id='main' class="content struct">
 <h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>unix_socket</a>::<wbr><a class='struct' href=''>UnixListener</a></span><span class='out-of-band'><span id='render-detail'>
-            <a id="toggle-all-docs" href="#" title="collapse all docs">[&minus;]</a>
-        </span><a id='src-1294' class='srclink' href='../src/unix_socket/lib.rs.html#352-354' title='goto source code'>[src]</a></span></h1>
+            <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                [<span class='inner'>&#x2212;</span>]
+            </a>
+        </span><a id='src-1294' class='srclink' href='../src/unix_socket/lib.rs.html#395-397' title='goto source code'>[src]</a></span></h1>
 <pre class='rust struct'>pub struct UnixListener {
     // some fields omitted
 }</pre><div class='docblock'><p>A structure representing a Unix domain socket server.</p>
+
+<h1 id="examples" class='section-header'><a
+                           href="#examples">Examples</a></h1><pre id='rust-example-rendered' class='rust '>
+<span class='kw'>use</span> <span class='ident'>std</span>::<span class='ident'>thread</span>;
+<span class='kw'>use</span> <span class='ident'>unix_socket</span>::{<span class='ident'>UnixStream</span>, <span class='ident'>UnixListener</span>};
+
+<span class='kw'>fn</span> <span class='ident'>handle_client</span>(<span class='ident'>stream</span>: <span class='ident'>UnixStream</span>) {
+    <span class='comment'>// ...</span>
+}
+
+<span class='kw'>let</span> <span class='ident'>listener</span> <span class='op'>=</span> <span class='ident'>UnixListener</span>::<span class='ident'>bind</span>(<span class='string'>&quot;/path/to/the/socket&quot;</span>).<span class='ident'>unwrap</span>();
+
+<span class='comment'>// accept connections and process them, spawning a new thread for each one</span>
+<span class='kw'>for</span> <span class='ident'>stream</span> <span class='kw'>in</span> <span class='ident'>listener</span>.<span class='ident'>incoming</span>() {
+    <span class='kw'>match</span> <span class='ident'>stream</span> {
+        <span class='prelude-val'>Ok</span>(<span class='ident'>stream</span>) <span class='op'>=&gt;</span> {
+            <span class='comment'>/* connection succeeded */</span>
+            <span class='ident'>thread</span>::<span class='ident'>spawn</span>(<span class='op'>||</span> <span class='ident'>handle_client</span>(<span class='ident'>stream</span>));
+        }
+        <span class='prelude-val'>Err</span>(<span class='ident'>err</span>) <span class='op'>=&gt;</span> {
+            <span class='comment'>/* connection failed */</span>
+            <span class='kw'>break</span>;
+        }
+    }
+}
+
+<span class='comment'>// close the listener socket</span>
+<span class='ident'>drop</span>(<span class='ident'>listener</span>);
+</pre>
 </div><h2 id='methods'>Methods</h2><h3 class='impl'><code>impl <a class='struct' href='../unix_socket/struct.UnixListener.html' title='unix_socket::UnixListener'>UnixListener</a></code></h3><div class='impl-items'><h4 id='method.bind' class='method'><code>fn <a href='#method.bind' class='fnname'>bind</a>&lt;P: <a class='trait' href='http://doc.rust-lang.org/nightly/core/convert/trait.AsRef.html' title='core::convert::AsRef'>AsRef</a>&lt;<a class='struct' href='http://doc.rust-lang.org/nightly/std/path/struct.Path.html' title='std::path::Path'>Path</a>&gt;&gt;(path: P) -&gt; <a class='type' href='http://doc.rust-lang.org/nightly/std/io/error/type.Result.html' title='std::io::error::Result'>Result</a>&lt;<a class='struct' href='../unix_socket/struct.UnixListener.html' title='unix_socket::UnixListener'>UnixListener</a>&gt;</code></h4>
 <div class='docblock'><p>Creates a new <code>UnixListener</code> which will be bound to the specified
 socket.</p>
@@ -107,6 +138,10 @@ connections and options set on one listener will affect the other.</p>
                 <code>struct</code>, <code>enum</code>,
                 <code>trait</code>, <code>typedef</code> (or
                 <code>tdef</code>).
+            </p>
+            <p>
+                Search functions by type signature (e.g.
+                <code>vec -> usize</code>)
             </p>
         </div>
     </div>
