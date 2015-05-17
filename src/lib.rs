@@ -208,6 +208,19 @@ impl fmt::Debug for DebugErr {
 }
 
 /// A stream which communicates over a Unix domain socket.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use unix_socket::UnixStream;
+/// use std::io::prelude::*;
+///
+/// let mut stream = UnixStream::connect("/path/to/my/socket").unwrap();
+/// stream.write_all(b"hello world").unwrap();
+/// let mut response = String::new();
+/// stream.read_to_string(&mut response).unwrap();
+/// println!("{}", response);
+/// ```
 pub struct UnixStream {
     inner: Inner,
 }
@@ -349,6 +362,36 @@ impl AsRawFd for UnixStream {
 }
 
 /// A structure representing a Unix domain socket server.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use std::thread;
+/// use unix_socket::{UnixStream, UnixListener};
+///
+/// fn handle_client(stream: UnixStream) {
+///     // ...
+/// }
+///
+/// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+///
+/// // accept connections and process them, spawning a new thread for each one
+/// for stream in listener.incoming() {
+///     match stream {
+///         Ok(stream) => {
+///             /* connection succeeded */
+///             thread::spawn(|| handle_client(stream));
+///         }
+///         Err(err) => {
+///             /* connection failed */
+///             break;
+///         }
+///     }
+/// }
+///
+/// // close the listener socket
+/// drop(listener);
+/// ```
 pub struct UnixListener {
     inner: Inner,
 }
