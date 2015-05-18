@@ -1,6 +1,6 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
-#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/master")]
+#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.0")]
 
 extern crate debug_builders;
 extern crate libc;
