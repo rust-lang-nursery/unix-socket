@@ -7,7 +7,7 @@ script:
 - cargo test
 - cargo doc --no-deps
 after_success:
-- test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "master" && test $TRAVIS_RUST_VERSION == "nightly" && ./.travis/update_docs.sh
+- test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "master" && test $TRAVIS_RUST_VERSION == "stable" && ./.travis/update_docs.sh
 env:
   global:
     secure: BA+yYeuttSM6B9spxJMdsxyWbIJGLR97X4/XbZ5XwQKcf+iWA7ykAXrM1AG+1FFrWQP8581HdElC7rF8gMdexXpE/kjurFxgFD4QHj/HAmZkCqyv85IaoV8YP4VZMLbzStFAo8kgQZzmSRJMPdbi5ic94sDeP+NJjbmeRbDPepY=
