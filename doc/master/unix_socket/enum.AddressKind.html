@@ -41,25 +41,23 @@
     </nav>
 
     <section id='main' class="content enum">
-<h1 class='fqn'><span class='in-band'>Enum <a href='index.html'>unix_socket</a>::<wbr><a class='enum' href=''>AddressKind</a></span><span class='out-of-band'><span id='render-detail'>
-            <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
-                [<span class='inner'>&#x2212;</span>]
-            </a>
-        </span><a id='src-418' class='srclink' href='../src/unix_socket/lib.rs.html#105-114' title='goto source code'>[src]</a></span></h1>
+<h1 class='fqn'><span class='in-band'>Enum <a href='index.html'>unix_socket</a>::<wbr><a class='enum' href=''>AddressKind</a><wbr></span><span class='out-of-band'><span id='render-detail'>
+            <a id="collapse-all" href="#">[-]</a>&nbsp;<a id="expand-all" href="#">[+]</a>
+        </span><a id='src-418' href='../src/unix_socket/lib.rs.html#105-114'>[src]</a></span></h1>
 <pre class='rust enum'>pub enum AddressKind&lt;'a&gt; {
     Unnamed,
     Pathname(&amp;'a <a class='struct' href='http://doc.rust-lang.org/nightly/std/path/struct.Path.html' title='std::path::Path'>Path</a>),
     Abstract(<a href='http://doc.rust-lang.org/nightly/std/primitive.slice.html'>&amp;'a [</a><a href='http://doc.rust-lang.org/nightly/std/primitive.u8.html'>u8</a><a href='http://doc.rust-lang.org/nightly/std/primitive.slice.html'>]</a>),
 }</pre><div class='docblock'><p>The kind of an address associated with a Unix socket.</p>
 </div><h2 class='variants'>Variants</h2>
-<table><tr><td id='variant.Unnamed'><code>Unnamed</code></td><td><div class='docblock'><p>An unnamed address.</p>
-</div></td></tr><tr><td id='variant.Pathname'><code>Pathname</code></td><td><div class='docblock'><p>An address corresponding to a path on the filesystem.</p>
-</div></td></tr><tr><td id='variant.Abstract'><code>Abstract</code></td><td><div class='docblock'><p>An address in an abstract namespace unrelated to the filesystem.</p>
+<table><tr><td id='variant.Unnamed'><a class='stability Unmarked' title='No stability level'></a><code>Unnamed</code></td><td><div class='docblock'><p>An unnamed address.</p>
+</div></td></tr><tr><td id='variant.Pathname'><a class='stability Unmarked' title='No stability level'></a><code>Pathname</code></td><td><div class='docblock'><p>An address corresponding to a path on the filesystem.</p>
+</div></td></tr><tr><td id='variant.Abstract'><a class='stability Unmarked' title='No stability level'></a><code>Abstract</code></td><td><div class='docblock'><p>An address in an abstract namespace unrelated to the filesystem.</p>
 
 <p>Abstract addresses are a nonportable Linux extension.</p>
-</div></td></tr></table><h2 id='implementations'>Trait Implementations</h2><h3 id='derived_implementations'>Derived Implementations </h3><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Copy.html' title='core::marker::Copy'>Copy</a> for <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h3><div class='impl-items'></div><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/clone/trait.Clone.html' title='core::clone::Clone'>Clone</a> for <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.clone' class='method'><code>fn <a href='http://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone' class='fnname'>clone</a>(&amp;self) -&gt; <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h4>
-<h4 id='method.clone_from' class='method'><code>fn <a href='http://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone_from' class='fnname'>clone_from</a>(&amp;mut self, source: &amp;Self)</code></h4>
-</div><h3 class='impl'><code>impl&lt;'a&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html' title='core::fmt::Debug'>Debug</a> for <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.fmt' class='method'><code>fn <a href='http://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html#method.fmt' class='fnname'>fmt</a>(&amp;self, __arg_0: &amp;mut <a class='struct' href='http://doc.rust-lang.org/nightly/core/fmt/struct.Formatter.html' title='core::fmt::Formatter'>Formatter</a>) -&gt; <a class='type' href='http://doc.rust-lang.org/nightly/core/fmt/type.Result.html' title='core::fmt::Result'>Result</a></code></h4>
+</div></td></tr></table><h2 id='implementations'>Trait Implementations</h2><h3 id='derived_implementations'>Derived Implementations </h3><h3 class='impl'><a class='stability Stable' title='Stable'></a><code>impl&lt;'a&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Copy.html' title='core::marker::Copy'>Copy</a> for <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h3><div class='impl-items'></div><h3 class='impl'><a class='stability Stable' title='Stable'></a><code>impl&lt;'a&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/clone/trait.Clone.html' title='core::clone::Clone'>Clone</a> for <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.clone' class='method'><a class='stability Stable' title='Stable'></a><code>fn <a href='http://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone' class='fnname'>clone</a>(&amp;self) -&gt; <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h4>
+<h4 id='method.clone_from' class='method'><a class='stability Stable' title='Stable'></a><code>fn <a href='http://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone_from' class='fnname'>clone_from</a>(&amp;mut self, source: &amp;Self)</code></h4>
+</div><h3 class='impl'><a class='stability Stable' title='Stable'></a><code>impl&lt;'a&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html' title='core::fmt::Debug'>Debug</a> for <a class='enum' href='../unix_socket/enum.AddressKind.html' title='unix_socket::AddressKind'>AddressKind</a>&lt;'a&gt;</code></h3><div class='impl-items'><h4 id='method.fmt' class='method'><a class='stability Stable' title='Stable'></a><code>fn <a href='http://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html#method.fmt' class='fnname'>fmt</a>(&amp;self, __arg_0: &amp;mut <a class='struct' href='http://doc.rust-lang.org/nightly/core/fmt/struct.Formatter.html' title='core::fmt::Formatter'>Formatter</a>) -&gt; <a class='type' href='http://doc.rust-lang.org/nightly/core/fmt/type.Result.html' title='core::fmt::Result'>Result</a></code></h4>
 </div></section>
     <section id='search' class="content hidden"></section>
 
@@ -92,10 +90,6 @@
                 <code>struct</code>, <code>enum</code>,
                 <code>trait</code>, <code>typedef</code> (or
                 <code>tdef</code>).
-            </p>
-            <p>
-                Search functions by type signature (e.g.
-                <code>vec -> usize</code>)
             </p>
         </div>
     </div>
