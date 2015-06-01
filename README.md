@@ -4,4 +4,4 @@
 
 Support for Unix domain socket clients and servers.
 
-Documentation is available [here](https://sfackler.github.io/rust-unix-socket/doc/master/unix_socket).
+[Documentation](https://sfackler.github.io/rust-unix-socket/doc/master/unix_socket)
