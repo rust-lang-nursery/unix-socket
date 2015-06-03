@@ -18,3 +18,4 @@ tempdir = "0.3"
 
 [features]
 from_raw_fd = []
+socket_timeout = []

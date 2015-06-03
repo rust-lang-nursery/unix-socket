@@ -1,6 +1,8 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
 #![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/master")]
+#![cfg_attr(feature = "socket_timeout", feature(duration))]
+#![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
 
 extern crate debug_builders;
 extern crate libc;
@@ -24,6 +26,14 @@ extern "C" {
                   ty: libc::c_int,
                   proto: libc::c_int,
                   sv: *mut [libc::c_int; 2])
+                  -> libc::c_int;
+
+    #[cfg(feature = "socket_timeout")]
+    fn getsockopt(socket: libc::c_int,
+                  level: libc::c_int,
+                  option_name: libc::c_int,
+                  option_value: *mut libc::c_void,
+                  option_len: *mut libc::c_void)
                   -> libc::c_int;
 }
 
@@ -286,6 +296,116 @@ impl UnixStream {
     /// Returns the socket address of the remote half of this connection.
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(self.inner.0, libc::getpeername)
+    }
+
+    /// Sets the read timeout for the socket.
+    ///
+    /// If the provided value is `None`, then `read` calls will block
+    /// indefinitely. It is an error to pass the zero `Duration` to this
+    /// method.
+    ///
+    /// Requires the `socket_timeout` feature.
+    #[cfg(feature = "socket_timeout")]
+    pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+        self.set_timeout(timeout, libc::SO_RCVTIMEO)
+    }
+
+    /// Sets the write timeout for the socket.
+    ///
+    /// If the provided value is `None`, then `write` calls will block
+    /// indefinitely. It is an error to pass the zero `Duration` to this
+    /// method.
+    ///
+    /// Requires the `socket_timeout` feature.
+    #[cfg(feature = "socket_timeout")]
+    pub fn set_write_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+        self.set_timeout(timeout, libc::SO_SNDTIMEO)
+    }
+
+    #[cfg(feature = "socket_timeout")]
+    fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int)
+            -> io::Result<()> {
+        let timeout = match dur {
+            Some(dur) => {
+                if dur.secs() == 0 && dur.extra_nanos() == 0 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                              "cannot set a 0 duration timeout"));
+                }
+
+                let secs = if dur.secs() > libc::time_t::max_value() as u64 {
+                    libc::time_t::max_value()
+                } else {
+                    dur.secs() as libc::time_t
+                };
+                let mut timeout = libc::timeval {
+                    tv_sec: secs,
+                    tv_usec: (dur.extra_nanos() / 1000) as libc::suseconds_t,
+                };
+                if timeout.tv_sec == 0 && timeout.tv_usec == 0 {
+                    timeout.tv_usec = 1;
+                }
+                timeout
+            }
+            None => {
+                libc::timeval {
+                    tv_sec: 0,
+                    tv_usec: 0,
+                }
+            }
+        };
+
+        let ret = unsafe {
+            libc::setsockopt(self.inner.0,
+                             libc::SOL_SOCKET,
+                             kind,
+                             &timeout as *const _ as *const _,
+                             mem::size_of::<libc::timeval>() as libc::socklen_t)
+        };
+        if ret != 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Returns the read timeout of this socket.
+    ///
+    /// Requires the `socket_timeout` feature.
+    #[cfg(feature = "socket_timeout")]
+    pub fn read_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+        self.timeout(libc::SO_RCVTIMEO)
+    }
+
+    /// Returns the write timeout of this socket.
+    ///
+    /// Requires the `socket_timeout` feature.
+    #[cfg(feature = "socket_timeout")]
+    pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+        self.timeout(libc::SO_SNDTIMEO)
+    }
+
+    #[cfg(feature = "socket_timeout")]
+    fn timeout(&self, kind: libc::c_int) -> io::Result<Option<std::time::Duration>> {
+        let timeout = unsafe {
+            let mut timeout: libc::timeval = mem::zeroed();
+            let mut size = mem::size_of::<libc::timeval>() as libc::socklen_t;
+            let ret = getsockopt(self.inner.0,
+                                 libc::SOL_SOCKET,
+                                 kind,
+                                 &mut timeout as *mut _ as *mut _,
+                                 &mut size as *mut _ as *mut _);
+            if ret != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            timeout
+        };
+
+        if timeout.tv_sec == 0 && timeout.tv_usec == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(std::time::Duration::new(timeout.tv_sec as u64,
+                                             (timeout.tv_usec as u32) * 1000)))
+        }
     }
 
     /// Shut down the read, write, or both halves of this connection.
@@ -688,5 +808,85 @@ mod test {
             Err(e) => panic!("unexpected error {}", e),
             Ok(_) => panic!("unexpected success"),
         }
+    }
+
+    #[test]
+    #[cfg(feature = "socket_timeout")]
+    fn timeouts() {
+        use std::time::Duration;
+
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let socket_path = dir.path().join("sock");
+
+        let _listener = or_panic!(UnixListener::bind(&socket_path));
+
+        let stream = or_panic!(UnixStream::connect(&socket_path));
+        let dur = Duration::new(15410, 0);
+
+        assert_eq!(None, or_panic!(stream.read_timeout()));
+
+        or_panic!(stream.set_read_timeout(Some(dur)));
+        assert_eq!(Some(dur), or_panic!(stream.read_timeout()));
+
+        assert_eq!(None, or_panic!(stream.write_timeout()));
+
+        or_panic!(stream.set_write_timeout(Some(dur)));
+        assert_eq!(Some(dur), or_panic!(stream.write_timeout()));
+
+        or_panic!(stream.set_read_timeout(None));
+        assert_eq!(None, or_panic!(stream.read_timeout()));
+
+        or_panic!(stream.set_write_timeout(None));
+        assert_eq!(None, or_panic!(stream.write_timeout()));
+    }
+
+    #[test]
+    #[cfg(feature = "socket_timeout")]
+    fn test_read_timeout() {
+        use std::time::Duration;
+
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let socket_path = dir.path().join("sock");
+
+        let _listener = or_panic!(UnixListener::bind(&socket_path));
+
+        let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
+
+        let mut buf = [0; 10];
+        let wait = Duration::span(|| {
+            let kind = stream.read(&mut buf).err().expect("expected error").kind();
+            assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
+        });
+        assert!(wait > Duration::from_millis(400));
+        assert!(wait < Duration::from_millis(1600));
+    }
+
+    #[test]
+    #[cfg(feature = "socket_timeout")]
+    fn test_read_with_timeout() {
+        use std::time::Duration;
+
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let socket_path = dir.path().join("sock");
+
+        let listener = or_panic!(UnixListener::bind(&socket_path));
+
+        let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
+
+        let mut other_end = or_panic!(listener.accept());
+        or_panic!(other_end.write_all(b"hello world"));
+
+        let mut buf = [0; 11];
+        or_panic!(stream.read(&mut buf));
+        assert_eq!(b"hello world", &buf[..]);
+
+        let wait = Duration::span(|| {
+            let kind = stream.read(&mut buf).err().expect("expected error").kind();
+            assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
+        });
+        assert!(wait > Duration::from_millis(400));
+        assert!(wait < Duration::from_millis(1600));
     }
 }
