@@ -248,9 +248,7 @@ impl UnixStream {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
 
-            let ret = libc::connect(inner.0,
-                                    &addr as *const _ as *const _,
-                                    len);
+            let ret = libc::connect(inner.0, &addr as *const _ as *const _, len);
             if ret < 0 {
                 Err(io::Error::last_os_error())
             } else {
@@ -323,8 +321,7 @@ impl UnixStream {
     }
 
     #[cfg(feature = "socket_timeout")]
-    fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int)
-            -> io::Result<()> {
+    fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeout = match dur {
             Some(dur) => {
                 if dur.secs() == 0 && dur.extra_nanos() == 0 {
@@ -541,9 +538,7 @@ impl UnixListener {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
 
-            let ret = libc::bind(inner.0,
-                                 &addr as *const _ as *const _,
-                                 len);
+            let ret = libc::bind(inner.0, &addr as *const _ as *const _, len);
             if ret < 0 {
                 return Err(io::Error::last_os_error());
             }
