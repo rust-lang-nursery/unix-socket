@@ -15,3 +15,6 @@ debug-builders = "0.1"
 
 [dev-dependencies]
 tempdir = "0.3"
+
+[features]
+from_raw_fd = []

@@ -351,6 +351,16 @@ impl AsRawFd for UnixStream {
     }
 }
 
+#[cfg(feature = "from_raw_fd")]
+impl std::os::unix::io::FromRawFd for UnixStream {
+    /// Requires the `from_raw_fd` feature.
+    unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
+        UnixStream {
+            inner: Inner(fd)
+        }
+    }
+}
+
 /// A structure representing a Unix domain socket server.
 ///
 /// # Examples
@@ -477,6 +487,16 @@ impl UnixListener {
 impl AsRawFd for UnixListener {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.0
+    }
+}
+
+#[cfg(feature = "from_raw_fd")]
+impl std::os::unix::io::FromRawFd for UnixListener {
+    /// Requires the `from_raw_fd` feature.
+    unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
+        UnixListener {
+            inner: Inner(fd)
+        }
     }
 }
 
