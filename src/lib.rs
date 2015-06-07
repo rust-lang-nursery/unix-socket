@@ -1,6 +1,6 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
-#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.1")]
+#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.2")]
 #![cfg_attr(feature = "socket_timeout", feature(duration))]
 #![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
 
@@ -75,6 +75,15 @@ impl Inner {
         }
         debug_assert_eq!(res, 0);
         Ok((Inner(fds[0]), Inner(fds[1])))
+    }
+
+    fn try_clone(&self) -> io::Result<Inner> {
+        let fd = unsafe { libc::dup(self.0) };
+        if fd < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(Inner(fd))
+        }
     }
 }
 
@@ -248,9 +257,7 @@ impl UnixStream {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
 
-            let ret = libc::connect(inner.0,
-                                    &addr as *const _ as *const _,
-                                    len);
+            let ret = libc::connect(inner.0, &addr as *const _ as *const _, len);
             if ret < 0 {
                 Err(io::Error::last_os_error())
             } else {
@@ -278,14 +285,9 @@ impl UnixStream {
     /// data, and options set on one stream will be propogated to the other
     /// stream.
     pub fn try_clone(&self) -> io::Result<UnixStream> {
-        let fd = unsafe { libc::dup(self.inner.0) };
-        if fd < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(UnixStream {
-                inner: Inner(fd)
-            })
-        }
+        Ok(UnixStream {
+            inner: try!(self.inner.try_clone())
+        })
     }
 
     /// Returns the socket address of the local half of this connection.
@@ -323,8 +325,7 @@ impl UnixStream {
     }
 
     #[cfg(feature = "socket_timeout")]
-    fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int)
-            -> io::Result<()> {
+    fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeout = match dur {
             Some(dur) => {
                 if dur.secs() == 0 && dur.extra_nanos() == 0 {
@@ -541,9 +542,7 @@ impl UnixListener {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
 
-            let ret = libc::bind(inner.0,
-                                 &addr as *const _ as *const _,
-                                 len);
+            let ret = libc::bind(inner.0, &addr as *const _ as *const _, len);
             if ret < 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -578,15 +577,10 @@ impl UnixListener {
     /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
-    pub fn try_clone(&self) -> io::Result<UnixStream> {
-        let fd = unsafe { libc::dup(self.inner.0) };
-        if fd < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(UnixStream {
-                inner: Inner(fd)
-            })
-        }
+    pub fn try_clone(&self) -> io::Result<UnixListener> {
+        Ok(UnixListener {
+            inner: try!(self.inner.try_clone())
+        })
     }
 
     /// Returns the socket address of the local half of this connection.
