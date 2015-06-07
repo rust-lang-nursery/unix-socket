@@ -76,6 +76,15 @@ impl Inner {
         debug_assert_eq!(res, 0);
         Ok((Inner(fds[0]), Inner(fds[1])))
     }
+
+    fn try_clone(&self) -> io::Result<Inner> {
+        let fd = unsafe { libc::dup(self.0) };
+        if fd < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(Inner(fd))
+        }
+    }
 }
 
 unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
@@ -276,14 +285,9 @@ impl UnixStream {
     /// data, and options set on one stream will be propogated to the other
     /// stream.
     pub fn try_clone(&self) -> io::Result<UnixStream> {
-        let fd = unsafe { libc::dup(self.inner.0) };
-        if fd < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(UnixStream {
-                inner: Inner(fd)
-            })
-        }
+        Ok(UnixStream {
+            inner: try!(self.inner.try_clone())
+        })
     }
 
     /// Returns the socket address of the local half of this connection.
@@ -574,14 +578,9 @@ impl UnixListener {
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
     pub fn try_clone(&self) -> io::Result<UnixListener> {
-        let fd = unsafe { libc::dup(self.inner.0) };
-        if fd < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(UnixListener {
-                inner: Inner(fd)
-            })
-        }
+        Ok(UnixListener {
+            inner: try!(self.inner.try_clone())
+        })
     }
 
     /// Returns the socket address of the local half of this connection.
