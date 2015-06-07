@@ -573,12 +573,12 @@ impl UnixListener {
     /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
-    pub fn try_clone(&self) -> io::Result<UnixStream> {
+    pub fn try_clone(&self) -> io::Result<UnixListener> {
         let fd = unsafe { libc::dup(self.inner.0) };
         if fd < 0 {
             Err(io::Error::last_os_error())
         } else {
-            Ok(UnixStream {
+            Ok(UnixListener {
                 inner: Inner(fd)
             })
         }
