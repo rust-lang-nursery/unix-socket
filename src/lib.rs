@@ -436,6 +436,12 @@ fn calc_len(buf: &[u8]) -> libc::size_t {
 
 impl io::Read for UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        io::Read::read(&mut &*self, buf)
+    }
+}
+
+impl<'a> io::Read for &'a UnixStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let ret = unsafe {
             libc::recv(self.inner.0, buf.as_mut_ptr() as *mut _, calc_len(buf), 0)
         };
@@ -449,6 +455,16 @@ impl io::Read for UnixStream {
 }
 
 impl io::Write for UnixStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        io::Write::write(&mut &*self, buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        io::Write::flush(&mut &*self)
+    }
+}
+
+impl<'a> io::Write for &'a UnixStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let ret = unsafe {
             libc::send(self.inner.0, buf.as_ptr() as *const _, calc_len(buf), 0)
