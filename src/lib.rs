@@ -47,6 +47,22 @@ fn sun_path_offset() -> usize {
     }
 }
 
+fn cvt(v: libc::c_int) -> io::Result<libc::c_int> {
+    if v < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(v)
+    }
+}
+
+fn cvt_s(v: libc::ssize_t) -> io::Result<libc::ssize_t> {
+    if v < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(v)
+    }
+}
+
 struct Inner(RawFd);
 
 impl Drop for Inner {
@@ -58,31 +74,23 @@ impl Drop for Inner {
 }
 
 impl Inner {
-    unsafe fn new() -> io::Result<Inner> {
-        let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
-        if fd < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(Inner(fd))
+    fn new() -> io::Result<Inner> {
+        unsafe {
+            cvt(libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0)).map(Inner)
         }
     }
 
-    unsafe fn new_pair() -> io::Result<(Inner, Inner)> {
-        let mut fds = [0, 0];
-        let res = socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, &mut fds);
-        if res < 0 {
-            return Err(io::Error::last_os_error());
+    fn new_pair() -> io::Result<(Inner, Inner)> {
+        unsafe {
+            let mut fds = [0, 0];
+            try!(cvt(socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, &mut fds)));
+            Ok((Inner(fds[0]), Inner(fds[1])))
         }
-        debug_assert_eq!(res, 0);
-        Ok((Inner(fds[0]), Inner(fds[1])))
     }
 
     fn try_clone(&self) -> io::Result<Inner> {
-        let fd = unsafe { libc::dup(self.0) };
-        if fd < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(Inner(fd))
+        unsafe {
+            cvt(libc::dup(self.0)).map(Inner)
         }
     }
 }
@@ -156,11 +164,7 @@ impl SocketAddr {
         unsafe {
             let mut addr: libc::sockaddr_un = mem::zeroed();
             let mut len = mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
-            let ret = f(fd, &mut addr as *mut _ as *mut _, &mut len);
-
-            if ret != 0 {
-                return Err(io::Error::last_os_error());
-            }
+            try!(cvt(f(fd, &mut addr as *mut _ as *mut _, &mut len)));
 
             if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -272,10 +276,8 @@ impl UnixStream {
     ///
     /// Returns two `UnixStream`s which are connected to each other.
     pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
-        unsafe {
-            let (i1, i2) = try!(Inner::new_pair());
-            Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
-        }
+        let (i1, i2) = try!(Inner::new_pair());
+        Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
     }
 
     /// Create a new independently owned handle to the underlying socket.
@@ -355,17 +357,13 @@ impl UnixStream {
             }
         };
 
-        let ret = unsafe {
-            libc::setsockopt(self.inner.0,
-                             libc::SOL_SOCKET,
-                             kind,
-                             &timeout as *const _ as *const _,
-                             mem::size_of::<libc::timeval>() as libc::socklen_t)
-        };
-        if ret != 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(())
+        unsafe {
+            cvt(libc::setsockopt(self.inner.0,
+                                 libc::SOL_SOCKET,
+                                 kind,
+                                 &timeout as *const _ as *const _,
+                                 mem::size_of::<libc::timeval>() as libc::socklen_t))
+                .map(|_| ())
         }
     }
 
@@ -390,14 +388,11 @@ impl UnixStream {
         let timeout = unsafe {
             let mut timeout: libc::timeval = mem::zeroed();
             let mut size = mem::size_of::<libc::timeval>() as libc::socklen_t;
-            let ret = getsockopt(self.inner.0,
-                                 libc::SOL_SOCKET,
-                                 kind,
-                                 &mut timeout as *mut _ as *mut _,
-                                 &mut size as *mut _ as *mut _);
-            if ret != 0 {
-                return Err(io::Error::last_os_error());
-            }
+            try!(cvt(getsockopt(self.inner.0,
+                                libc::SOL_SOCKET,
+                                kind,
+                                &mut timeout as *mut _ as *mut _,
+                                &mut size as *mut _ as *mut _)));
             timeout
         };
 
@@ -421,11 +416,8 @@ impl UnixStream {
             Shutdown::Both => libc::SHUT_RDWR,
         };
 
-        let ret = unsafe { libc::shutdown(self.inner.0, how) };
-        if ret != 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(())
+        unsafe {
+            cvt(libc::shutdown(self.inner.0, how)).map(|_| ())
         }
     }
 }
@@ -442,14 +434,9 @@ impl io::Read for UnixStream {
 
 impl<'a> io::Read for &'a UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let ret = unsafe {
-            libc::recv(self.inner.0, buf.as_mut_ptr() as *mut _, calc_len(buf), 0)
-        };
-
-        if ret < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(ret as usize)
+        unsafe {
+            cvt_s(libc::recv(self.inner.0, buf.as_mut_ptr() as *mut _, calc_len(buf), 0))
+                .map(|r| r as usize)
         }
     }
 }
@@ -466,14 +453,9 @@ impl io::Write for UnixStream {
 
 impl<'a> io::Write for &'a UnixStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let ret = unsafe {
-            libc::send(self.inner.0, buf.as_ptr() as *const _, calc_len(buf), 0)
-        };
-
-        if ret < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(ret as usize)
+        unsafe {
+            cvt_s(libc::send(self.inner.0, buf.as_ptr() as *const _, calc_len(buf), 0))
+                .map(|r| r as usize)
         }
     }
 
@@ -558,33 +540,20 @@ impl UnixListener {
             let inner = try!(Inner::new());
             let (addr, len) = try!(sockaddr_un(path));
 
-            let ret = libc::bind(inner.0, &addr as *const _ as *const _, len);
-            if ret < 0 {
-                return Err(io::Error::last_os_error());
-            }
+            try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
+            try!(cvt(libc::listen(inner.0, 128)));
 
-            let ret = libc::listen(inner.0, 128);
-            if ret < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(UnixListener {
-                    inner: inner,
-                })
-            }
+            Ok(UnixListener {
+                inner: inner,
+            })
         }
     }
 
     /// Accepts a new incoming connection to this listener.
     pub fn accept(&self) -> io::Result<UnixStream> {
         unsafe {
-            let ret = libc::accept(self.inner.0, 0 as *mut _, 0 as *mut _);
-            if ret < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(UnixStream {
-                    inner: Inner(ret)
-                })
-            }
+            cvt(libc::accept(self.inner.0, 0 as *mut _, 0 as *mut _))
+                .map(|fd| UnixStream { inner: Inner(fd) })
         }
     }
 
