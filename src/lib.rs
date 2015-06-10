@@ -646,7 +646,7 @@ impl fmt::Debug for UnixSocket {
 }
 
 impl UnixSocket {
-    /// Creates a Unix socket of the datagram type from the given path.
+    /// Creates a Unix datagram socket from the given path.
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixSocket> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
