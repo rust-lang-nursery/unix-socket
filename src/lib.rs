@@ -287,7 +287,7 @@ impl<'a> fmt::Display for AsciiEscaped<'a> {
     }
 }
 
-/// A stream which communicates over a Unix domain socket.
+/// A Unix stream socket.
 ///
 /// # Examples
 ///
@@ -630,6 +630,18 @@ impl<'a> Iterator for Incoming<'a> {
 }
 
 /// A Unix datagram socket.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use unix_socket::UnixSocket;
+///
+/// let socket = UnixSocket::bind("/path/to/my/socket").unwrap();
+/// socket.send_to(b"hello world", "/path/to/other/socket").unwrap();
+/// let mut buf = [0; 100];
+/// let (count, address) = socket.recv_from(&mut buf).unwrap();
+/// println!("socket {:?} sent {:?}", address, &buf[..count]);
+/// ```
 pub struct UnixSocket {
     inner: Inner,
 }
