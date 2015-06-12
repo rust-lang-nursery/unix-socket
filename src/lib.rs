@@ -634,21 +634,21 @@ impl<'a> Iterator for Incoming<'a> {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use unix_socket::UnixSocket;
+/// use unix_socket::UnixDatagram;
 ///
-/// let socket = UnixSocket::bind("/path/to/my/socket").unwrap();
+/// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
 /// socket.send_to(b"hello world", "/path/to/other/socket").unwrap();
 /// let mut buf = [0; 100];
 /// let (count, address) = socket.recv_from(&mut buf).unwrap();
 /// println!("socket {:?} sent {:?}", address, &buf[..count]);
 /// ```
-pub struct UnixSocket {
+pub struct UnixDatagram {
     inner: Inner,
 }
 
-impl fmt::Debug for UnixSocket {
+impl fmt::Debug for UnixDatagram {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = DebugStruct::new(fmt, "UnixSocket")
+        let mut builder = DebugStruct::new(fmt, "UnixDatagram")
             .field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
             builder = builder.field("local", &addr);
@@ -657,16 +657,16 @@ impl fmt::Debug for UnixSocket {
     }
 }
 
-impl UnixSocket {
+impl UnixDatagram {
     /// Creates a Unix datagram socket from the given path.
-    pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixSocket> {
+    pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
             let (addr, len) = try!(sockaddr_un(path));
 
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
 
-            Ok(UnixSocket {
+            Ok(UnixDatagram {
                 inner: inner,
             })
         }
@@ -765,17 +765,17 @@ impl UnixSocket {
     }
 }
 
-impl AsRawFd for UnixSocket {
+impl AsRawFd for UnixDatagram {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.0
     }
 }
 
 #[cfg(feature = "from_raw_fd")]
-impl std::os::unix::io::FromRawFd for UnixSocket {
+impl std::os::unix::io::FromRawFd for UnixDatagram {
     /// Requires the `from_raw_fd` feature.
-    unsafe fn from_raw_fd(fd: RawFd) -> UnixSocket {
-        UnixSocket {
+    unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
+        UnixDatagram {
             inner: Inner(fd)
         }
     }
@@ -790,7 +790,7 @@ mod test {
     use std::io::prelude::*;
     use self::tempdir::TempDir;
 
-    use {UnixListener, UnixStream, UnixSocket};
+    use {UnixListener, UnixStream, UnixDatagram};
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -1023,13 +1023,13 @@ mod test {
     }
 
     #[test]
-    fn test_unix_socket() {
+    fn test_unix_datagram() {
         let dir = or_panic!(TempDir::new("unix_socket"));
         let path1 = dir.path().join("sock1");
         let path2 = dir.path().join("sock2");
 
-        let sock1 = or_panic!(UnixSocket::bind(&path1));
-        let sock2 = or_panic!(UnixSocket::bind(&path2));
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock2 = or_panic!(UnixDatagram::bind(&path2));
 
         let msg = b"hello world";
         or_panic!(sock1.send_to(msg, &path2));
