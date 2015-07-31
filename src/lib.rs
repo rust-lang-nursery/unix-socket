@@ -20,6 +20,7 @@ use std::os::unix::io::{RawFd, AsRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::fmt;
 use std::path::Path;
+use std::mem::size_of;
 
 extern "C" {
     fn socketpair(domain: libc::c_int,
@@ -202,7 +203,7 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
 }
 
 /// The kind of an address associated with a Unix socket.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressKind<'a> {
     /// An unnamed address.
     Unnamed,
@@ -237,7 +238,13 @@ impl SocketAddr {
             let mut len = mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
             try!(cvt(f(&mut addr as *mut _ as *mut _, &mut len)));
 
-            if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
+            if len == 0 {
+                // When there is a datagram from unnamed unix socket
+                // linux returns zero bytes of address
+                len = sun_path_offset() as libc::socklen_t;  // i.e. zero-length address
+            } else if (len as usize) < size_of::<libc::sa_family_t>() ||
+                addr.sun_family != libc::AF_UNIX as libc::sa_family_t
+            {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           "file descriptor did not correspond to a Unix socket"));
             }
@@ -672,6 +679,15 @@ impl UnixDatagram {
         }
     }
 
+    /// Creates a Unix Datagram socket which is not bound to any address
+    /// you may use send_to to send message (but probably can't receive)
+    pub fn new() -> io::Result<UnixDatagram> {
+        let inner = try!(Inner::new(libc::SOCK_DGRAM));
+        Ok(UnixDatagram {
+            inner: inner,
+        })
+    }
+
     /// Returns the address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
@@ -790,7 +806,7 @@ mod test {
     use std::io::prelude::*;
     use self::tempdir::TempDir;
 
-    use {UnixListener, UnixStream, UnixDatagram};
+    use {UnixListener, UnixStream, UnixDatagram, AddressKind};
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -1035,6 +1051,23 @@ mod test {
         or_panic!(sock1.send_to(msg, &path2));
         let mut buf = [0; 11];
         or_panic!(sock2.recv_from(&mut buf));
+        assert_eq!(msg, &buf[..]);
+    }
+
+    #[test]
+    fn test_unnamed_unix_datagram() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock2 = or_panic!(UnixDatagram::new());
+
+        let msg = b"hello world";
+        or_panic!(sock2.send_to(msg, &path1));
+        let mut buf = [0; 11];
+        let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
+        assert_eq!(usize, 11);
+        assert_eq!(addr.address(), AddressKind::Unnamed);
         assert_eq!(msg, &buf[..]);
     }
 }
