@@ -688,6 +688,22 @@ impl UnixDatagram {
         })
     }
 
+    /// Creates a Unix Datagram socket which is connected to specified addresss
+    /// the socket is unnamed and similar to one created by `new()` except
+    /// it will send message to the specified addresss *by default*
+    pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
+        unsafe {
+            let inner = try!(Inner::new(libc::SOCK_DGRAM));
+            let (addr, len) = try!(sockaddr_un(path));
+
+            try!(cvt(libc::connect(inner.0, &addr as *const _ as *const _, len)));
+
+            Ok(UnixDatagram {
+                inner: inner,
+            })
+        }
+    }
+
     /// Returns the address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
@@ -727,6 +743,21 @@ impl UnixDatagram {
                                                 0,
                                                 &addr as *const _ as *const _,
                                                 len)));
+            Ok(count as usize)
+        }
+    }
+
+    /// Sends data on the socket to the default address.
+    ///
+    /// Default address is set when socket was created by `connect()` constructor
+    ///
+    /// On success, returns the number of bytes written.
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        unsafe {
+            let count = try!(cvt_s(libc::send(self.inner.0,
+                                                buf.as_ptr() as *const _,
+                                                calc_len(buf),
+                                                0)));
             Ok(count as usize)
         }
     }
@@ -1068,6 +1099,30 @@ mod test {
         let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
         assert_eq!(usize, 11);
         assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert_eq!(msg, &buf[..]);
+    }
+
+    #[test]
+    fn test_connect_unix_datagram() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock2 = or_panic!(UnixDatagram::connect(&path1));
+
+        // Check send()
+        let msg = b"hello there";
+        or_panic!(sock2.send(msg));
+        let mut buf = [0; 11];
+        let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
+        assert_eq!(usize, 11);
+        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert_eq!(msg, &buf[..]);
+
+        // Send to should still work too
+        let msg = b"hello world";
+        or_panic!(sock2.send_to(msg, &path1));
+        or_panic!(sock1.recv_from(&mut buf));
         assert_eq!(msg, &buf[..]);
     }
 }
