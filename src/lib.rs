@@ -691,16 +691,15 @@ impl UnixDatagram {
     /// Creates a Unix Datagram socket which is connected to specified addresss
     /// the socket is unnamed and similar to one created by `new()` except
     /// it will send message to the specified addresss *by default*
-    pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
+    pub fn connect<P: AsRef<Path>>(&mut self, path: P)
+        -> io::Result<()>
+    {
         unsafe {
-            let inner = try!(Inner::new(libc::SOCK_DGRAM));
             let (addr, len) = try!(sockaddr_un(path));
 
-            try!(cvt(libc::connect(inner.0, &addr as *const _ as *const _, len)));
+            try!(cvt(libc::connect(self.inner.0, &addr as *const _ as *const _, len)));
 
-            Ok(UnixDatagram {
-                inner: inner,
-            })
+            Ok(())
         }
     }
 
@@ -1106,23 +1105,32 @@ mod test {
     fn test_connect_unix_datagram() {
         let dir = or_panic!(TempDir::new("unix_socket"));
         let path1 = dir.path().join("sock1");
+        let path2 = dir.path().join("sock2");
 
-        let sock1 = or_panic!(UnixDatagram::bind(&path1));
-        let sock2 = or_panic!(UnixDatagram::connect(&path1));
+        let bsock1 = or_panic!(UnixDatagram::bind(&path1));
+        let bsock2 = or_panic!(UnixDatagram::bind(&path2));
+        let mut sock = or_panic!(UnixDatagram::new());
+        or_panic!(sock.connect(&path1));
 
         // Check send()
         let msg = b"hello there";
-        or_panic!(sock2.send(msg));
+        or_panic!(sock.send(msg));
         let mut buf = [0; 11];
-        let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
+        let (usize, addr) = or_panic!(bsock1.recv_from(&mut buf));
         assert_eq!(usize, 11);
         assert_eq!(addr.address(), AddressKind::Unnamed);
         assert_eq!(msg, &buf[..]);
 
+
         // Send to should still work too
         let msg = b"hello world";
-        or_panic!(sock2.send_to(msg, &path1));
-        or_panic!(sock1.recv_from(&mut buf));
+        or_panic!(sock.send_to(msg, &path2));
+        or_panic!(bsock2.recv_from(&mut buf));
         assert_eq!(msg, &buf[..]);
+
+        // Changing default socket works too
+        or_panic!(sock.connect(&path2));
+        or_panic!(sock.send(msg));
+        or_panic!(bsock2.recv_from(&mut buf));
     }
 }
