@@ -665,7 +665,7 @@ impl fmt::Debug for UnixDatagram {
 }
 
 impl UnixDatagram {
-    /// Creates a Unix datagram socket from the given path.
+    /// Creates a Unix datagram socket bound to the given path.
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
@@ -679,19 +679,19 @@ impl UnixDatagram {
         }
     }
 
-    /// Creates a Unix Datagram socket which is not bound to any address
-    /// you may use send_to to send message (but probably can't receive)
-    pub fn new() -> io::Result<UnixDatagram> {
+    /// Creates a Unix Datagram socket which is not bound to any address.
+    pub fn unbound() -> io::Result<UnixDatagram> {
         let inner = try!(Inner::new(libc::SOCK_DGRAM));
         Ok(UnixDatagram {
             inner: inner,
         })
     }
 
-    /// Creates a Unix Datagram socket which is connected to specified addresss
-    /// the socket is unnamed and similar to one created by `new()` except
-    /// it will send message to the specified addresss *by default*
-    pub fn connect<P: AsRef<Path>>(&mut self, path: P)
+    /// Connect the socket to the specified address.
+    ///
+    /// The `send` method may be used to send data to the specified address.
+    /// `recv` and `recv_from` will only receive data from that address.
+    pub fn connect<P: AsRef<Path>>(&self, path: P)
         -> io::Result<()>
     {
         unsafe {
@@ -731,18 +731,18 @@ impl UnixDatagram {
 
     /// Receives data from the socket.
     ///
-    /// On success, returns the number of bytes read
+    /// On success, returns the number of bytes read.
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         unsafe {
             let count = try!(cvt_s(libc::recv(self.inner.0,
-                                         buf.as_mut_ptr() as *mut _,
-                                         calc_len(buf),
-                                         0)));
+                                              buf.as_mut_ptr() as *mut _,
+                                              calc_len(buf),
+                                              0)));
             Ok(count as usize)
         }
     }
 
-    /// Sends data on the socket to the given address.
+    /// Sends data on the socket to the specified address.
     ///
     /// On success, returns the number of bytes written.
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
@@ -759,9 +759,10 @@ impl UnixDatagram {
         }
     }
 
-    /// Sends data on the socket to the default address.
+    /// Sends data on the socket to the socket's peer.
     ///
-    /// Default address is set when socket was created by `connect()` constructor
+    /// The peer address may be set by the `connect` method, and this method
+    /// will return an error if the socket has not already been connected.
     ///
     /// On success, returns the number of bytes written.
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
@@ -1103,7 +1104,7 @@ mod test {
         let path1 = dir.path().join("sock1");
 
         let sock1 = or_panic!(UnixDatagram::bind(&path1));
-        let sock2 = or_panic!(UnixDatagram::new());
+        let sock2 = or_panic!(UnixDatagram::unbound());
 
         let msg = b"hello world";
         or_panic!(sock2.send_to(msg, &path1));
@@ -1122,7 +1123,7 @@ mod test {
 
         let bsock1 = or_panic!(UnixDatagram::bind(&path1));
         let bsock2 = or_panic!(UnixDatagram::bind(&path2));
-        let mut sock = or_panic!(UnixDatagram::new());
+        let sock = or_panic!(UnixDatagram::unbound());
         or_panic!(sock.connect(&path1));
 
         // Check send()
@@ -1153,7 +1154,7 @@ mod test {
         let path1 = dir.path().join("sock1");
 
         let sock1 = or_panic!(UnixDatagram::bind(&path1));
-        let mut sock2 = or_panic!(UnixDatagram::new());
+        let sock2 = or_panic!(UnixDatagram::unbound());
         or_panic!(sock2.connect(&path1));
 
         let msg = b"hello world";
