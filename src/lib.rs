@@ -1,6 +1,6 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
-#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.3")]
+#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.4")]
 #![cfg_attr(feature = "socket_timeout", feature(duration))]
 #![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
 
@@ -20,6 +20,7 @@ use std::os::unix::io::{RawFd, AsRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::fmt;
 use std::path::Path;
+use std::mem::size_of;
 
 extern "C" {
     fn socketpair(domain: libc::c_int,
@@ -202,7 +203,7 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
 }
 
 /// The kind of an address associated with a Unix socket.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressKind<'a> {
     /// An unnamed address.
     Unnamed,
@@ -237,7 +238,13 @@ impl SocketAddr {
             let mut len = mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
             try!(cvt(f(&mut addr as *mut _ as *mut _, &mut len)));
 
-            if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
+            if len == 0 {
+                // When there is a datagram from unnamed unix socket
+                // linux returns zero bytes of address
+                len = sun_path_offset() as libc::socklen_t;  // i.e. zero-length address
+            } else if (len as usize) < size_of::<libc::sa_family_t>() ||
+                addr.sun_family != libc::AF_UNIX as libc::sa_family_t
+            {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           "file descriptor did not correspond to a Unix socket"));
             }
@@ -472,8 +479,8 @@ impl AsRawFd for UnixStream {
 }
 
 #[cfg(feature = "from_raw_fd")]
+/// Requires the `from_raw_fd` feature.
 impl std::os::unix::io::FromRawFd for UnixStream {
-    /// Requires the `from_raw_fd` feature.
     unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
         UnixStream {
             inner: Inner(fd)
@@ -591,8 +598,8 @@ impl AsRawFd for UnixListener {
 }
 
 #[cfg(feature = "from_raw_fd")]
+/// Requires the `from_raw_fd` feature.
 impl std::os::unix::io::FromRawFd for UnixListener {
-    /// Requires the `from_raw_fd` feature.
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
         UnixListener {
             inner: Inner(fd)
@@ -658,7 +665,7 @@ impl fmt::Debug for UnixDatagram {
 }
 
 impl UnixDatagram {
-    /// Creates a Unix datagram socket from the given path.
+    /// Creates a Unix datagram socket bound to the given path.
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
@@ -669,6 +676,30 @@ impl UnixDatagram {
             Ok(UnixDatagram {
                 inner: inner,
             })
+        }
+    }
+
+    /// Creates a Unix Datagram socket which is not bound to any address.
+    pub fn unbound() -> io::Result<UnixDatagram> {
+        let inner = try!(Inner::new(libc::SOCK_DGRAM));
+        Ok(UnixDatagram {
+            inner: inner,
+        })
+    }
+
+    /// Connect the socket to the specified address.
+    ///
+    /// The `send` method may be used to send data to the specified address.
+    /// `recv` and `recv_from` will only receive data from that address.
+    pub fn connect<P: AsRef<Path>>(&self, path: P)
+        -> io::Result<()>
+    {
+        unsafe {
+            let (addr, len) = try!(sockaddr_un(path));
+
+            try!(cvt(libc::connect(self.inner.0, &addr as *const _ as *const _, len)));
+
+            Ok(())
         }
     }
 
@@ -698,7 +729,20 @@ impl UnixDatagram {
         Ok((count as usize, addr))
     }
 
-    /// Sends data on the socket to the given address.
+    /// Receives data from the socket.
+    ///
+    /// On success, returns the number of bytes read.
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        unsafe {
+            let count = try!(cvt_s(libc::recv(self.inner.0,
+                                              buf.as_mut_ptr() as *mut _,
+                                              calc_len(buf),
+                                              0)));
+            Ok(count as usize)
+        }
+    }
+
+    /// Sends data on the socket to the specified address.
     ///
     /// On success, returns the number of bytes written.
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
@@ -711,6 +755,22 @@ impl UnixDatagram {
                                                 0,
                                                 &addr as *const _ as *const _,
                                                 len)));
+            Ok(count as usize)
+        }
+    }
+
+    /// Sends data on the socket to the socket's peer.
+    ///
+    /// The peer address may be set by the `connect` method, and this method
+    /// will return an error if the socket has not already been connected.
+    ///
+    /// On success, returns the number of bytes written.
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        unsafe {
+            let count = try!(cvt_s(libc::send(self.inner.0,
+                                                buf.as_ptr() as *const _,
+                                                calc_len(buf),
+                                                0)));
             Ok(count as usize)
         }
     }
@@ -772,8 +832,8 @@ impl AsRawFd for UnixDatagram {
 }
 
 #[cfg(feature = "from_raw_fd")]
+/// Requires the `from_raw_fd` feature.
 impl std::os::unix::io::FromRawFd for UnixDatagram {
-    /// Requires the `from_raw_fd` feature.
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
         UnixDatagram {
             inner: Inner(fd)
@@ -790,7 +850,7 @@ mod test {
     use std::io::prelude::*;
     use self::tempdir::TempDir;
 
-    use {UnixListener, UnixStream, UnixDatagram};
+    use {UnixListener, UnixStream, UnixDatagram, AddressKind};
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -1035,6 +1095,73 @@ mod test {
         or_panic!(sock1.send_to(msg, &path2));
         let mut buf = [0; 11];
         or_panic!(sock2.recv_from(&mut buf));
+        assert_eq!(msg, &buf[..]);
+    }
+
+    #[test]
+    fn test_unnamed_unix_datagram() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock2 = or_panic!(UnixDatagram::unbound());
+
+        let msg = b"hello world";
+        or_panic!(sock2.send_to(msg, &path1));
+        let mut buf = [0; 11];
+        let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
+        assert_eq!(usize, 11);
+        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert_eq!(msg, &buf[..]);
+    }
+
+    #[test]
+    fn test_connect_unix_datagram() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+        let path2 = dir.path().join("sock2");
+
+        let bsock1 = or_panic!(UnixDatagram::bind(&path1));
+        let bsock2 = or_panic!(UnixDatagram::bind(&path2));
+        let sock = or_panic!(UnixDatagram::unbound());
+        or_panic!(sock.connect(&path1));
+
+        // Check send()
+        let msg = b"hello there";
+        or_panic!(sock.send(msg));
+        let mut buf = [0; 11];
+        let (usize, addr) = or_panic!(bsock1.recv_from(&mut buf));
+        assert_eq!(usize, 11);
+        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert_eq!(msg, &buf[..]);
+
+
+        // Send to should still work too
+        let msg = b"hello world";
+        or_panic!(sock.send_to(msg, &path2));
+        or_panic!(bsock2.recv_from(&mut buf));
+        assert_eq!(msg, &buf[..]);
+
+        // Changing default socket works too
+        or_panic!(sock.connect(&path2));
+        or_panic!(sock.send(msg));
+        or_panic!(bsock2.recv_from(&mut buf));
+    }
+
+    #[test]
+    fn test_unix_datagram_recv() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock2 = or_panic!(UnixDatagram::unbound());
+        or_panic!(sock2.connect(&path1));
+
+        let msg = b"hello world";
+        or_panic!(sock2.send_to(msg, &path1));
+        let mut buf = [0; 11];
+        let size = or_panic!(sock1.recv(&mut buf));
+        assert_eq!(size, 11);
         assert_eq!(msg, &buf[..]);
     }
 }
