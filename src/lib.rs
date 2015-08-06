@@ -1,6 +1,6 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
-#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.3")]
+#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.4")]
 #![cfg_attr(feature = "socket_timeout", feature(duration))]
 #![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
 
