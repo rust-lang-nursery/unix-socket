@@ -729,6 +729,19 @@ impl UnixDatagram {
         Ok((count as usize, addr))
     }
 
+    /// Receives data from the socket.
+    ///
+    /// On success, returns the number of bytes read
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        unsafe {
+            let count = try!(cvt_s(libc::recv(self.inner.0,
+                                         buf.as_mut_ptr() as *mut _,
+                                         calc_len(buf),
+                                         0)));
+            Ok(count as usize)
+        }
+    }
+
     /// Sends data on the socket to the given address.
     ///
     /// On success, returns the number of bytes written.
@@ -1132,5 +1145,22 @@ mod test {
         or_panic!(sock.connect(&path2));
         or_panic!(sock.send(msg));
         or_panic!(bsock2.recv_from(&mut buf));
+    }
+
+    #[test]
+    fn test_unix_datagram_recv() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let mut sock2 = or_panic!(UnixDatagram::new());
+        or_panic!(sock2.connect(&path1));
+
+        let msg = b"hello world";
+        or_panic!(sock2.send_to(msg, &path1));
+        let mut buf = [0; 11];
+        let size = or_panic!(sock1.recv(&mut buf));
+        assert_eq!(size, 11);
+        assert_eq!(msg, &buf[..]);
     }
 }
