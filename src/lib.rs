@@ -688,6 +688,21 @@ impl UnixDatagram {
         })
     }
 
+    /// Creates a Unix Datagram socket which is connected to specified addresss
+    /// the socket is unnamed and similar to one created by `new()` except
+    /// it will send message to the specified addresss *by default*
+    pub fn connect<P: AsRef<Path>>(&mut self, path: P)
+        -> io::Result<()>
+    {
+        unsafe {
+            let (addr, len) = try!(sockaddr_un(path));
+
+            try!(cvt(libc::connect(self.inner.0, &addr as *const _ as *const _, len)));
+
+            Ok(())
+        }
+    }
+
     /// Returns the address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
@@ -714,6 +729,19 @@ impl UnixDatagram {
         Ok((count as usize, addr))
     }
 
+    /// Receives data from the socket.
+    ///
+    /// On success, returns the number of bytes read
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        unsafe {
+            let count = try!(cvt_s(libc::recv(self.inner.0,
+                                         buf.as_mut_ptr() as *mut _,
+                                         calc_len(buf),
+                                         0)));
+            Ok(count as usize)
+        }
+    }
+
     /// Sends data on the socket to the given address.
     ///
     /// On success, returns the number of bytes written.
@@ -727,6 +755,21 @@ impl UnixDatagram {
                                                 0,
                                                 &addr as *const _ as *const _,
                                                 len)));
+            Ok(count as usize)
+        }
+    }
+
+    /// Sends data on the socket to the default address.
+    ///
+    /// Default address is set when socket was created by `connect()` constructor
+    ///
+    /// On success, returns the number of bytes written.
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        unsafe {
+            let count = try!(cvt_s(libc::send(self.inner.0,
+                                                buf.as_ptr() as *const _,
+                                                calc_len(buf),
+                                                0)));
             Ok(count as usize)
         }
     }
@@ -1068,6 +1111,56 @@ mod test {
         let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
         assert_eq!(usize, 11);
         assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert_eq!(msg, &buf[..]);
+    }
+
+    #[test]
+    fn test_connect_unix_datagram() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+        let path2 = dir.path().join("sock2");
+
+        let bsock1 = or_panic!(UnixDatagram::bind(&path1));
+        let bsock2 = or_panic!(UnixDatagram::bind(&path2));
+        let mut sock = or_panic!(UnixDatagram::new());
+        or_panic!(sock.connect(&path1));
+
+        // Check send()
+        let msg = b"hello there";
+        or_panic!(sock.send(msg));
+        let mut buf = [0; 11];
+        let (usize, addr) = or_panic!(bsock1.recv_from(&mut buf));
+        assert_eq!(usize, 11);
+        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert_eq!(msg, &buf[..]);
+
+
+        // Send to should still work too
+        let msg = b"hello world";
+        or_panic!(sock.send_to(msg, &path2));
+        or_panic!(bsock2.recv_from(&mut buf));
+        assert_eq!(msg, &buf[..]);
+
+        // Changing default socket works too
+        or_panic!(sock.connect(&path2));
+        or_panic!(sock.send(msg));
+        or_panic!(bsock2.recv_from(&mut buf));
+    }
+
+    #[test]
+    fn test_unix_datagram_recv() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let mut sock2 = or_panic!(UnixDatagram::new());
+        or_panic!(sock2.connect(&path1));
+
+        let msg = b"hello world";
+        or_panic!(sock2.send_to(msg, &path1));
+        let mut buf = [0; 11];
+        let size = or_panic!(sock1.recv(&mut buf));
+        assert_eq!(size, 11);
         assert_eq!(msg, &buf[..]);
     }
 }
