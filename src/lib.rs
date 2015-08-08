@@ -242,9 +242,7 @@ impl SocketAddr {
                 // When there is a datagram from unnamed unix socket
                 // linux returns zero bytes of address
                 len = sun_path_offset() as libc::socklen_t;  // i.e. zero-length address
-            } else if (len as usize) < size_of::<libc::sa_family_t>() ||
-                addr.sun_family != libc::AF_UNIX as libc::sa_family_t
-            {
+            } else if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           "file descriptor did not correspond to a Unix socket"));
             }
