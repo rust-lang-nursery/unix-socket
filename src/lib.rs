@@ -1135,13 +1135,6 @@ mod test {
         assert_eq!(addr.address(), AddressKind::Unnamed);
         assert_eq!(msg, &buf[..]);
 
-
-        // Send to should still work too
-        let msg = b"hello world";
-        or_panic!(sock.send_to(msg, &path2));
-        or_panic!(bsock2.recv_from(&mut buf));
-        assert_eq!(msg, &buf[..]);
-
         // Changing default socket works too
         or_panic!(sock.connect(&path2));
         or_panic!(sock.send(msg));
@@ -1158,7 +1151,7 @@ mod test {
         or_panic!(sock2.connect(&path1));
 
         let msg = b"hello world";
-        or_panic!(sock2.send_to(msg, &path1));
+        or_panic!(sock2.send(msg));
         let mut buf = [0; 11];
         let size = or_panic!(sock1.recv(&mut buf));
         assert_eq!(size, 11);
