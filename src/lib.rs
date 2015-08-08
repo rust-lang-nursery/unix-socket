@@ -658,6 +658,9 @@ impl fmt::Debug for UnixDatagram {
         if let Ok(addr) = self.local_addr() {
             builder = builder.field("local", &addr);
         }
+        if let Ok(addr) = self.peer_addr() {
+            builder = builder.field("peer", &addr);
+        }
         builder.finish()
     }
 }
@@ -710,6 +713,13 @@ impl UnixDatagram {
     /// Returns the address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
+    }
+
+    /// Returns the address of this socket's peer.
+    ///
+    /// The `connect` method will connect the socket to a peer.
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        SocketAddr::new(|addr, len| unsafe { libc::getpeername(self.inner.0, addr, len) })
     }
 
     /// Receives data from the socket.
