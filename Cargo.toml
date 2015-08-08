@@ -17,5 +17,7 @@ debug-builders = "0.1"
 tempdir = "0.3"
 
 [features]
+default = ["from_raw_fd"]
+
 from_raw_fd = []
 socket_timeout = []
