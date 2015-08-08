@@ -666,6 +666,12 @@ impl fmt::Debug for UnixDatagram {
 
 impl UnixDatagram {
     /// Creates a Unix datagram socket bound to the given path.
+    ///
+    /// Linux provides, as a nonportable extension, a separate "abstract"
+    /// address namespace as opposed to filesystem-based addressing. If `path`
+    /// begins with a null byte, it will be interpreted as an "abstract"
+    /// address. Otherwise, it will be interpreted as a "pathname" address,
+    /// corresponding to a path on the filesystem.
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
