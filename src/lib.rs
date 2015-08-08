@@ -479,7 +479,7 @@ impl AsRawFd for UnixStream {
 }
 
 #[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature.
+/// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixStream {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
         UnixStream {
@@ -598,7 +598,7 @@ impl AsRawFd for UnixListener {
 }
 
 #[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature.
+/// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixListener {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
         UnixListener {
@@ -832,7 +832,7 @@ impl AsRawFd for UnixDatagram {
 }
 
 #[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature.
+/// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixDatagram {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
         UnixDatagram {
