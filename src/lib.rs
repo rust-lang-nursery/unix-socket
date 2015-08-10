@@ -81,10 +81,10 @@ impl Inner {
         }
     }
 
-    fn new_pair() -> io::Result<(Inner, Inner)> {
+    fn new_pair(kind: libc::c_int) -> io::Result<(Inner, Inner)> {
         unsafe {
             let mut fds = [0, 0];
-            try!(cvt(socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, &mut fds)));
+            try!(cvt(socketpair(libc::AF_UNIX, kind, 0, &mut fds)));
             Ok((Inner(fds[0]), Inner(fds[1])))
         }
     }
@@ -351,9 +351,16 @@ impl UnixStream {
     /// Create an unnamed pair of connected sockets.
     ///
     /// Returns two `UnixStream`s which are connected to each other.
-    pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
-        let (i1, i2) = try!(Inner::new_pair());
+    pub fn pair() -> io::Result<(UnixStream, UnixStream)> {
+        let (i1, i2) = try!(Inner::new_pair(libc::SOCK_STREAM));
         Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
+    }
+
+    /// # Deprecated
+    ///
+    /// Use `UnixStream::pair` instead.
+    pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
+        UnixStream::pair()
     }
 
     /// Create a new independently owned handle to the underlying socket.
@@ -694,6 +701,14 @@ impl UnixDatagram {
         })
     }
 
+    /// Create an unnamed pair of connected sockets.
+    ///
+    /// Returns two `UnixDatagrams`s which are connected to each other.
+    pub fn pair() -> io::Result<(UnixDatagram, UnixDatagram)> {
+        let (i1, i2) = try!(Inner::new_pair(libc::SOCK_DGRAM));
+        Ok((UnixDatagram { inner: i1 }, UnixDatagram { inner: i2 }))
+    }
+
     /// Connect the socket to the specified address.
     ///
     /// The `send` method may be used to send data to the specified address.
@@ -902,11 +917,11 @@ mod test {
     }
 
     #[test]
-    fn unnamed() {
+    fn pair() {
         let msg1 = b"hello";
         let msg2 = b"world!";
 
-        let (mut s1, mut s2) = or_panic!(UnixStream::unnamed());
+        let (mut s1, mut s2) = or_panic!(UnixStream::pair());
         let thread = thread::spawn(move || {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
@@ -1170,5 +1185,28 @@ mod test {
         let size = or_panic!(sock1.recv(&mut buf));
         assert_eq!(size, 11);
         assert_eq!(msg, &buf[..]);
+    }
+
+    #[test]
+    fn datagram_pair() {
+        let msg1 = b"hello";
+        let msg2 = b"world!";
+
+        let (s1, s2) = or_panic!(UnixDatagram::pair());
+        let thread = thread::spawn(move || {
+            // s1 must be moved in or the test will hang!
+            let mut buf = [0; 5];
+            or_panic!(s1.recv(&mut buf));
+            assert_eq!(&msg1[..], &buf[..]);
+            or_panic!(s1.send(msg2));
+        });
+
+        or_panic!(s2.send(msg1));
+        let mut buf = [0; 6];
+        or_panic!(s2.recv(&mut buf));
+        assert_eq!(&msg2[..], &buf[..]);
+        drop(s2);
+
+        thread.join().unwrap();
     }
 }
