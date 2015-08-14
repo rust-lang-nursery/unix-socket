@@ -1,11 +1,11 @@
 [package]
 name = "unix_socket"
-version = "0.4.4"
+version = "0.4.5"
 authors = ["Steven Fackler <sfackler@gmail.com>"]
 license = "MIT"
 description = "Unix domain socket bindings"
 repository = "https://github.com/sfackler/rust-unix-socket"
-documentation = "https://sfackler.github.io/rust-unix-socket/doc/v0.4.4/unix_socket"
+documentation = "https://sfackler.github.io/rust-unix-socket/doc/v0.4.5/unix_socket"
 readme = "README.md"
 keywords = ["posix", "unix", "socket", "domain"]
 
