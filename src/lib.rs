@@ -806,8 +806,8 @@ impl UnixDatagram {
 
     /// Sets the read timeout for the socket.
     ///
-    /// If the provided value is `None`, then `recv_from` calls will block
-    /// indefinitely. It is an error to pass the zero `Duration` to this
+    /// If the provided value is `None`, then `recv` and `recv_from` calls will
+    /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
     ///
     /// Requires the `socket_timeout` feature.
@@ -818,8 +818,8 @@ impl UnixDatagram {
 
     /// Sets the write timeout for the socket.
     ///
-    /// If the provided value is `None`, then `send_to` calls will block
-    /// indefinitely. It is an error to pass the zero `Duration` to this
+    /// If the provided value is `None`, then `send` and `send_to` calls will
+    /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
     ///
     /// Requires the `socket_timeout` feature.
