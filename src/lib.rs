@@ -1,6 +1,6 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
-#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.4")]
+#![doc(html_root_url="https://sfackler.github.io/rust-unix-socket/doc/v0.4.5")]
 #![cfg_attr(feature = "socket_timeout", feature(duration))]
 #![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
 
@@ -81,10 +81,10 @@ impl Inner {
         }
     }
 
-    fn new_pair() -> io::Result<(Inner, Inner)> {
+    fn new_pair(kind: libc::c_int) -> io::Result<(Inner, Inner)> {
         unsafe {
             let mut fds = [0, 0];
-            try!(cvt(socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, &mut fds)));
+            try!(cvt(socketpair(libc::AF_UNIX, kind, 0, &mut fds)));
             Ok((Inner(fds[0]), Inner(fds[1])))
         }
     }
@@ -132,19 +132,19 @@ impl Inner {
     fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeout = match dur {
             Some(dur) => {
-                if dur.secs() == 0 && dur.extra_nanos() == 0 {
+                if dur.as_secs() == 0 && dur.subsec_nanos() == 0 {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                               "cannot set a 0 duration timeout"));
                 }
 
-                let secs = if dur.secs() > libc::time_t::max_value() as u64 {
+                let secs = if dur.as_secs() > libc::time_t::max_value() as u64 {
                     libc::time_t::max_value()
                 } else {
-                    dur.secs() as libc::time_t
+                    dur.as_secs() as libc::time_t
                 };
                 let mut timeout = libc::timeval {
                     tv_sec: secs,
-                    tv_usec: (dur.extra_nanos() / 1000) as libc::suseconds_t,
+                    tv_usec: (dur.subsec_nanos() / 1000) as libc::suseconds_t,
                 };
                 if timeout.tv_sec == 0 && timeout.tv_usec == 0 {
                     timeout.tv_usec = 1;
@@ -242,9 +242,7 @@ impl SocketAddr {
                 // When there is a datagram from unnamed unix socket
                 // linux returns zero bytes of address
                 len = sun_path_offset() as libc::socklen_t;  // i.e. zero-length address
-            } else if (len as usize) < size_of::<libc::sa_family_t>() ||
-                addr.sun_family != libc::AF_UNIX as libc::sa_family_t
-            {
+            } else if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           "file descriptor did not correspond to a Unix socket"));
             }
@@ -353,9 +351,16 @@ impl UnixStream {
     /// Create an unnamed pair of connected sockets.
     ///
     /// Returns two `UnixStream`s which are connected to each other.
-    pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
-        let (i1, i2) = try!(Inner::new_pair());
+    pub fn pair() -> io::Result<(UnixStream, UnixStream)> {
+        let (i1, i2) = try!(Inner::new_pair(libc::SOCK_STREAM));
         Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
+    }
+
+    /// # Deprecated
+    ///
+    /// Use `UnixStream::pair` instead.
+    pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
+        UnixStream::pair()
     }
 
     /// Create a new independently owned handle to the underlying socket.
@@ -479,7 +484,7 @@ impl AsRawFd for UnixStream {
 }
 
 #[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature.
+/// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixStream {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
         UnixStream {
@@ -598,7 +603,7 @@ impl AsRawFd for UnixListener {
 }
 
 #[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature.
+/// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixListener {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
         UnixListener {
@@ -660,12 +665,21 @@ impl fmt::Debug for UnixDatagram {
         if let Ok(addr) = self.local_addr() {
             builder = builder.field("local", &addr);
         }
+        if let Ok(addr) = self.peer_addr() {
+            builder = builder.field("peer", &addr);
+        }
         builder.finish()
     }
 }
 
 impl UnixDatagram {
     /// Creates a Unix datagram socket bound to the given path.
+    ///
+    /// Linux provides, as a nonportable extension, a separate "abstract"
+    /// address namespace as opposed to filesystem-based addressing. If `path`
+    /// begins with a null byte, it will be interpreted as an "abstract"
+    /// address. Otherwise, it will be interpreted as a "pathname" address,
+    /// corresponding to a path on the filesystem.
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
@@ -687,6 +701,14 @@ impl UnixDatagram {
         })
     }
 
+    /// Create an unnamed pair of connected sockets.
+    ///
+    /// Returns two `UnixDatagrams`s which are connected to each other.
+    pub fn pair() -> io::Result<(UnixDatagram, UnixDatagram)> {
+        let (i1, i2) = try!(Inner::new_pair(libc::SOCK_DGRAM));
+        Ok((UnixDatagram { inner: i1 }, UnixDatagram { inner: i2 }))
+    }
+
     /// Connect the socket to the specified address.
     ///
     /// The `send` method may be used to send data to the specified address.
@@ -706,6 +728,13 @@ impl UnixDatagram {
     /// Returns the address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
+    }
+
+    /// Returns the address of this socket's peer.
+    ///
+    /// The `connect` method will connect the socket to a peer.
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        SocketAddr::new(|addr, len| unsafe { libc::getpeername(self.inner.0, addr, len) })
     }
 
     /// Receives data from the socket.
@@ -777,8 +806,8 @@ impl UnixDatagram {
 
     /// Sets the read timeout for the socket.
     ///
-    /// If the provided value is `None`, then `recv_from` calls will block
-    /// indefinitely. It is an error to pass the zero `Duration` to this
+    /// If the provided value is `None`, then `recv` and `recv_from` calls will
+    /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
     ///
     /// Requires the `socket_timeout` feature.
@@ -789,8 +818,8 @@ impl UnixDatagram {
 
     /// Sets the write timeout for the socket.
     ///
-    /// If the provided value is `None`, then `send_to` calls will block
-    /// indefinitely. It is an error to pass the zero `Duration` to this
+    /// If the provided value is `None`, then `send` and `send_to` calls will
+    /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
     ///
     /// Requires the `socket_timeout` feature.
@@ -832,7 +861,7 @@ impl AsRawFd for UnixDatagram {
 }
 
 #[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature.
+/// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixDatagram {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
         UnixDatagram {
@@ -888,11 +917,11 @@ mod test {
     }
 
     #[test]
-    fn unnamed() {
+    fn pair() {
         let msg1 = b"hello";
         let msg2 = b"world!";
 
-        let (mut s1, mut s2) = or_panic!(UnixStream::unnamed());
+        let (mut s1, mut s2) = or_panic!(UnixStream::pair());
         let thread = thread::spawn(move || {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
@@ -996,6 +1025,12 @@ mod test {
         }
 
         match UnixListener::bind(&socket_path) {
+            Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
+            Err(e) => panic!("unexpected error {}", e),
+            Ok(_) => panic!("unexpected success"),
+        }
+
+        match UnixDatagram::bind(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
             Err(e) => panic!("unexpected error {}", e),
             Ok(_) => panic!("unexpected success"),
@@ -1135,13 +1170,6 @@ mod test {
         assert_eq!(addr.address(), AddressKind::Unnamed);
         assert_eq!(msg, &buf[..]);
 
-
-        // Send to should still work too
-        let msg = b"hello world";
-        or_panic!(sock.send_to(msg, &path2));
-        or_panic!(bsock2.recv_from(&mut buf));
-        assert_eq!(msg, &buf[..]);
-
         // Changing default socket works too
         or_panic!(sock.connect(&path2));
         or_panic!(sock.send(msg));
@@ -1158,10 +1186,33 @@ mod test {
         or_panic!(sock2.connect(&path1));
 
         let msg = b"hello world";
-        or_panic!(sock2.send_to(msg, &path1));
+        or_panic!(sock2.send(msg));
         let mut buf = [0; 11];
         let size = or_panic!(sock1.recv(&mut buf));
         assert_eq!(size, 11);
         assert_eq!(msg, &buf[..]);
+    }
+
+    #[test]
+    fn datagram_pair() {
+        let msg1 = b"hello";
+        let msg2 = b"world!";
+
+        let (s1, s2) = or_panic!(UnixDatagram::pair());
+        let thread = thread::spawn(move || {
+            // s1 must be moved in or the test will hang!
+            let mut buf = [0; 5];
+            or_panic!(s1.recv(&mut buf));
+            assert_eq!(&msg1[..], &buf[..]);
+            or_panic!(s1.send(msg2));
+        });
+
+        or_panic!(s2.send(msg1));
+        let mut buf = [0; 6];
+        or_panic!(s2.recv(&mut buf));
+        assert_eq!(&msg2[..], &buf[..]);
+        drop(s2);
+
+        thread.join().unwrap();
     }
 }
