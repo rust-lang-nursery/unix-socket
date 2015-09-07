@@ -22,6 +22,9 @@ use std::fmt;
 use std::path::Path;
 use std::mem::size_of;
 
+mod sendmsg_impl;
+pub use sendmsg_impl::{ControlMsg, UCred};
+
 extern "C" {
     fn socketpair(domain: libc::c_int,
                   ty: libc::c_int,
@@ -165,6 +168,18 @@ impl Inner {
                                  kind,
                                  &timeout as *const _ as *const _,
                                  mem::size_of::<libc::timeval>() as libc::socklen_t))
+                .map(|_| ())
+        }
+    }
+
+    fn set_passcred(&self, receive_creds: bool) -> io::Result<()> {
+        unsafe {
+            let v: libc::c_int = if receive_creds { 1 } else { 0 };
+            cvt(libc::setsockopt(self.0,
+                                 libc::SOL_SOCKET,
+                                 sendmsg_impl::SO_PASSCRED,
+                                 &v as *const libc::c_int as *const libc::c_void,
+                                 mem::size_of::<libc::c_int>() as libc::socklen_t))
                 .map(|_| ())
         }
     }
@@ -641,6 +656,18 @@ impl<'a> Iterator for Incoming<'a> {
     }
 }
 
+/// The return value from a call to recvmsg
+pub struct RecvMsgResult {
+    /// Number of bytes received
+    pub data_bytes: usize,
+    /// Address of the sender
+    pub sender: SocketAddr,
+    /// List of all control messages received during this call
+    pub control_msgs: Vec<ControlMsg>,
+    /// Flags returned by recvmsg, see the recv(2) man page for a list
+    pub flags: libc::c_int,
+}
+
 /// A Unix datagram socket.
 ///
 /// # Examples
@@ -771,6 +798,47 @@ impl UnixDatagram {
         }
     }
 
+    /// Receives data on the socket.
+    ///
+    /// If path is None, the peer address set by the `connect` method will be used.  If it has not
+    /// been set, then this method will return an error.
+    ///
+    /// This interface allows sending data from multiple buffers.  This acts as if the buffers had been
+    /// concatenated in the order they were given.
+    ///
+    /// ctrl_msgs are special ancillary data that can be sent, such as file descriptors and Unix credentials
+    ///
+    /// flags is a pass-through of the flags specified in the sendmsg(2) man page
+    ///
+    /// On success, returns the number of bytes written.
+    pub fn recvmsg(&self, buffers: &[&mut[u8]], cmsg_buffer: &mut [u8], flags: libc::c_int) -> io::Result<RecvMsgResult> {
+        let mut result = Err(io::Error::new(io::ErrorKind::Other, "programming error"));
+        let addr = try!(SocketAddr::new(|addr, len| {
+            unsafe {
+                result = sendmsg_impl::recvmsg(
+                        self.inner.0,
+                        buffers,
+                        cmsg_buffer,
+                        flags,
+                        addr,
+                        len);
+            }
+            if let Err(ref e) = result {
+                -(e.raw_os_error().unwrap() as libc::c_int)
+            } else {
+                0
+            }
+        }));
+
+        let result = try!(result);
+        Ok(RecvMsgResult {
+            data_bytes: result.data_bytes,
+            sender: addr,
+            control_msgs: result.control_msgs,
+            flags: result.flags,
+        })
+    }
+
     /// Sends data on the socket to the specified address.
     ///
     /// On success, returns the number of bytes written.
@@ -801,6 +869,38 @@ impl UnixDatagram {
                                                 calc_len(buf),
                                                 0)));
             Ok(count as usize)
+        }
+    }
+
+    /// Sends data on the socket to the specified address.
+    ///
+    /// If path is None, the peer address set by the `connect` method will be used.  If it has not
+    /// been set, then this method will return an error.
+    ///
+    /// This interface allows sending data from multiple buffers.  This acts as if the buffers had been
+    /// concatenated in the order they were given.
+    ///
+    /// ctrl_msgs are special ancillary data that can be sent, such as file descriptors and Unix credentials
+    ///
+    /// flags is a pass-through of the flags specified in the sendmsg(2) man page
+    ///
+    /// On success, returns the number of bytes written.
+    pub fn sendmsg<P: AsRef<Path>>(&self, path: Option<P>, buffers: &[&[u8]], ctrl_msgs: &[ControlMsg], flags: libc::c_int) -> io::Result<usize> {
+        unsafe {
+            let dst = match path {
+                None => None,
+                Some(p) => {
+                    let v = try!(sockaddr_un(p));
+                    Some(v)
+                },
+            };
+
+            sendmsg_impl::sendmsg(
+                self.inner.0,
+                dst,
+                buffers,
+                ctrl_msgs,
+                flags)
         }
     }
 
@@ -851,6 +951,11 @@ impl UnixDatagram {
     /// (see the documentation of `Shutdown`).
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         self.inner.shutdown(how)
+    }
+
+    /// Enable or disable receiving SCM_CREDENTIALS messages
+    pub fn set_passcred(&self, receive_creds: bool) -> io::Result<()> {
+        self.inner.set_passcred(receive_creds)
     }
 }
 
@@ -1215,4 +1320,6 @@ mod test {
 
         thread.join().unwrap();
     }
+    // TODO: Add tests for sending credentials without calling set_passcred and with
+    // TODO: Add tests for sending fds
 }
