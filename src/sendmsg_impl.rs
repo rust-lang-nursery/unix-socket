@@ -26,6 +26,12 @@ mod raw {
 
         pub static so_passcred: libc::c_int;
 
+        pub static msg_eor: libc::c_int;
+        pub static msg_trunc: libc::c_int;
+        pub static msg_ctrunc: libc::c_int;
+        pub static msg_oob: libc::c_int;
+        pub static msg_errqueue: libc::c_int;
+
         pub fn cmsg_firsthdr(msgh: *const libc::c_void) -> *const libc::c_void;
         pub fn cmsg_nxthdr(msgh: *const libc::c_void, cmsg: *const libc::c_void) -> *const libc::c_void;
         pub fn cmsg_align(len: libc::size_t) -> libc::size_t;
@@ -39,6 +45,12 @@ pub use self::raw::so_passcred as SO_PASSCRED;
 
 pub use self::raw::scm_credentials as SCM_CREDENTIALS;
 pub use self::raw::scm_rights as SCM_RIGHTS;
+
+pub use self::raw::msg_eor as MSG_EOR;
+pub use self::raw::msg_trunc as MSG_TRUNC;
+pub use self::raw::msg_ctrunc as MSG_CTRUNC;
+pub use self::raw::msg_oob as MSG_OOB;
+pub use self::raw::msg_errqueue as MSG_ERRQUEUE;
 
 pub unsafe fn sendmsg(
     socket: libc::c_int, 
@@ -61,7 +73,7 @@ pub unsafe fn sendmsg(
         iovecs.push(IoVec::new(buf));
     }
     msg.msg_iov = iovecs.as_mut_ptr() as *mut libc::c_void;
-    msg.msg_iovlen = (mem::size_of::<IoVec>() * iovecs.len()) as libc::size_t;
+    msg.msg_iovlen = iovecs.len() as libc::size_t;
 
     // Initialize control message struct
 

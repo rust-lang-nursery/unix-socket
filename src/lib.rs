@@ -24,6 +24,7 @@ use std::mem::size_of;
 
 mod sendmsg_impl;
 pub use sendmsg_impl::{ControlMsg, UCred};
+pub use sendmsg_impl::{MSG_EOR, MSG_TRUNC, MSG_CTRUNC, MSG_OOB, MSG_ERRQUEUE};
 
 extern "C" {
     fn socketpair(domain: libc::c_int,
@@ -977,14 +978,17 @@ impl std::os::unix::io::FromRawFd for UnixDatagram {
 
 #[cfg(test)]
 mod test {
+    extern crate libc;
     extern crate tempdir;
 
     use std::thread;
     use std::io;
     use std::io::prelude::*;
+    use std::os::unix::io::{AsRawFd, FromRawFd};
+    use std::path::Path;
     use self::tempdir::TempDir;
 
-    use {UnixListener, UnixStream, UnixDatagram, AddressKind};
+    use {UnixListener, UnixStream, UnixDatagram, AddressKind, ControlMsg, RecvMsgResult, UCred, MSG_CTRUNC};
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -1320,6 +1324,182 @@ mod test {
 
         thread.join().unwrap();
     }
-    // TODO: Add tests for sending credentials without calling set_passcred and with
-    // TODO: Add tests for sending fds
+
+    /// Sends "hello" on the data channel and the specified cmsgs on the control channel
+    fn sendmsg_helper<P: AsRef<Path>>(s: &UnixDatagram, dst: Option<P>, cmsgs: &[ControlMsg]) {
+        let msg = b"he";
+        let msg2 = b"llo";
+        let sent_bytes = or_panic!(s.sendmsg(dst, &[&msg[..], &msg2[..]], cmsgs, 0));
+        assert_eq!(sent_bytes, 5);
+    }
+
+    /// Expects to receive "hello" on the data channel, and uses the given buf for cmsgs
+    fn recvmsg_helper(s: &UnixDatagram, cmsg_buf: &mut [u8]) -> RecvMsgResult {
+        let mut buf = [0; 3];
+        let mut buf2 = [0; 3];
+        let result = or_panic!(s.recvmsg(&[&mut buf[..], &mut buf2[..]], cmsg_buf, 0));
+        assert_eq!(result.data_bytes, 5);
+        assert_eq!(&buf[..], b"hel");
+        assert_eq!(&buf2[..2], b"lo");
+        result
+    }
+
+    #[test]
+    fn test_sendmsg_to() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock2 = or_panic!(UnixDatagram::unbound());
+
+        // Make sure the path-specified form of sendmsg works
+        sendmsg_helper(&sock2, Some(&path1), &[]);
+        let mut buf = [0; 6];
+        let size = or_panic!(sock1.recv(&mut buf));
+        assert_eq!(size, 5);
+        assert_eq!(&buf[..5], b"hello");
+    }
+
+    #[test]
+    fn test_recvmsg_sender() {
+        let dir = or_panic!(TempDir::new("unix_socket"));
+        let path1 = dir.path().join("sock1");
+        let path2 = dir.path().join("sock2");
+
+        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock2 = or_panic!(UnixDatagram::bind(&path2));
+
+        assert_eq!(or_panic!(sock1.send_to(b"hello", &path2)), 5);
+        let result = recvmsg_helper(&sock2, &mut []);
+        match result.sender.address() {
+            AddressKind::Pathname(p) => assert_eq!(p, path1.as_path()),
+            _ => unreachable!(),
+        }
+    }
+
+    #[cfg(feature = "from_raw_fd")]
+    #[test]
+    fn test_ctrunc() {
+        let (s1, s2) = or_panic!(UnixDatagram::pair());
+        let thread = thread::spawn(move || {
+            let mut cmsg_buf = [0; 1];
+            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
+            assert_eq!(result.control_msgs.len(), 0);
+            // Make sure the control messages were reported truncated
+            assert_eq!(result.flags & MSG_CTRUNC, MSG_CTRUNC);
+        });
+
+        let (_, theirs) = or_panic!(UnixDatagram::pair());
+        let cmsg = ControlMsg::Rights(vec![theirs.as_raw_fd()]);
+        sendmsg_helper::<&Path>(&s2, None, &[cmsg]);
+        drop(s2);
+
+        thread.join().unwrap();
+    }
+
+
+    #[test]
+    fn test_send_credentials_without_passcred() {
+        // Without passcred, the ucred should be dropped
+        let (s1, s2) = or_panic!(UnixDatagram::pair());
+        let thread = thread::spawn(move || {
+            let mut cmsg_buf = [0; 4096];
+            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
+            drop(cmsg_buf);
+            assert_eq!(result.control_msgs.len(), 0);
+            // Make sure the control messages weren't truncated
+            assert_eq!(result.flags & MSG_CTRUNC, 0);
+        });
+
+        let cmsg = unsafe { ControlMsg::Credentials(UCred{
+            pid: libc::getpid(),
+            uid: libc::getuid(),
+            gid: libc::getgid(),
+        }) };
+        sendmsg_helper::<&Path>(&s2, None, &[cmsg]);
+        drop(s2);
+
+        thread.join().unwrap();
+    }
+
+    #[test]
+    fn test_send_credentials_with_passcred() {
+        // With passcred, the ucred should be sent.
+        // Note: SO_PASSCRED will cause a credential to always be sent.  Unfortunately,
+        // without additional capabilities, we cannot properly test the SCM_CREDENTIALS
+        // message.  We pass one through to sendmsg below just to exercise that codepath,
+        // but it will not demonstrate that we are correctly sending it (other than not
+        // triggering an EINVAL).
+
+        let (s1, s2) = or_panic!(UnixDatagram::pair());
+        let thread = thread::spawn(move || {
+            or_panic!(s1.set_passcred(true));
+            let mut cmsg_buf = [0; 4096];
+            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
+            drop(cmsg_buf);
+            assert_eq!(result.control_msgs.len(), 1);
+            // Make sure the control messages weren't truncated
+            assert_eq!(result.flags & MSG_CTRUNC, 0);
+
+            for cmsg in result.control_msgs {
+                match cmsg {
+                    ControlMsg::Credentials(ucred) => {
+                        unsafe {
+                            assert_eq!(ucred.pid, libc::getpid());
+                            assert_eq!(ucred.uid, libc::getuid());
+                            assert_eq!(ucred.gid, libc::getgid());
+                        }
+                    },
+                    _ => panic!("Unexpected control message"),
+                }
+            }
+        });
+
+        let cmsg = unsafe { ControlMsg::Credentials(UCred{
+            pid: libc::getpid(),
+            uid: libc::getuid(),
+            gid: libc::getgid(),
+        }) };
+        sendmsg_helper::<&Path>(&s2, None, &[cmsg]);
+        drop(s2);
+
+        thread.join().unwrap();
+    }
+
+    #[cfg(feature = "from_raw_fd")]
+    #[test]
+    fn test_send_fds() {
+        let (s1, s2) = or_panic!(UnixDatagram::pair());
+        let thread = thread::spawn(move || {
+            let mut cmsg_buf = [0; 4096];
+            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
+            drop(cmsg_buf);
+            assert_eq!(result.control_msgs.len(), 1);
+            // Make sure the control messages weren't truncated
+            assert_eq!(result.flags & MSG_CTRUNC, 0);
+
+            for cmsg in result.control_msgs {
+                match cmsg {
+                    ControlMsg::Rights(fds) => {
+                        assert_eq!(fds.len(), 1);
+                        let new_s = unsafe { UnixDatagram::from_raw_fd(fds[0]) };
+                        let mut buf = [0; 4];
+                        assert_eq!(or_panic!(new_s.recv(&mut buf[..])), 4);
+                        assert_eq!(&buf[..], b"Test");
+                    },
+                    _ => panic!("Unexpected control message"),
+                }
+            }
+        });
+
+        let (my, theirs) = or_panic!(UnixDatagram::pair());
+        let cmsg = ControlMsg::Rights(vec![theirs.as_raw_fd()]);
+        sendmsg_helper::<&Path>(&s2, None, &[cmsg]);
+        drop(s2);
+        drop(theirs);
+
+        assert_eq!(or_panic!(my.send(b"Test")), 4);
+
+        thread.join().unwrap();
+    }
 }
