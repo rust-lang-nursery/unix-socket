@@ -22,9 +22,10 @@ use std::fmt;
 use std::path::Path;
 use std::mem::size_of;
 
+#[cfg(feature = "sendmsg")]
 mod sendmsg_impl;
-pub use sendmsg_impl::{ControlMsg, UCred};
-pub use sendmsg_impl::{MSG_EOR, MSG_TRUNC, MSG_CTRUNC, MSG_OOB, MSG_ERRQUEUE};
+#[cfg(feature = "sendmsg")]
+pub use sendmsg_impl::{ControlMsg, UCred, SendMsgFlags, RecvMsgFlags, RecvMsgResultFlags};
 
 extern "C" {
     fn socketpair(domain: libc::c_int,
@@ -173,9 +174,10 @@ impl Inner {
         }
     }
 
+    #[cfg(feature = "sendmsg")]
     fn set_passcred(&self, receive_creds: bool) -> io::Result<()> {
         unsafe {
-            let v: libc::c_int = if receive_creds { 1 } else { 0 };
+            let v: libc::c_int = receive_creds as libc::c_int;
             cvt(libc::setsockopt(self.0,
                                  libc::SOL_SOCKET,
                                  sendmsg_impl::SO_PASSCRED,
@@ -658,6 +660,7 @@ impl<'a> Iterator for Incoming<'a> {
 }
 
 /// The return value from a call to recvmsg
+#[cfg(feature = "sendmsg")]
 pub struct RecvMsgResult {
     /// Number of bytes received
     pub data_bytes: usize,
@@ -665,8 +668,8 @@ pub struct RecvMsgResult {
     pub sender: SocketAddr,
     /// List of all control messages received during this call
     pub control_msgs: Vec<ControlMsg>,
-    /// Flags returned by recvmsg, see the recv(2) man page for a list
-    pub flags: libc::c_int,
+    /// Flags returned by recvmsg, see the struct definition for more details
+    pub flags: RecvMsgResultFlags,
 }
 
 /// A Unix datagram socket.
@@ -804,15 +807,14 @@ impl UnixDatagram {
     /// If path is None, the peer address set by the `connect` method will be used.  If it has not
     /// been set, then this method will return an error.
     ///
-    /// This interface allows sending data from multiple buffers.  This acts as if the buffers had been
+    /// This interface allows receiving data into multiple buffers.  This acts as if the buffers had been
     /// concatenated in the order they were given.
     ///
-    /// ctrl_msgs are special ancillary data that can be sent, such as file descriptors and Unix credentials
-    ///
-    /// flags is a pass-through of the flags specified in the sendmsg(2) man page
+    /// cmsg_buffer is space to use for storing control messages.
     ///
     /// On success, returns the number of bytes written.
-    pub fn recvmsg(&self, buffers: &[&mut[u8]], cmsg_buffer: &mut [u8], flags: libc::c_int) -> io::Result<RecvMsgResult> {
+    #[cfg(feature = "sendmsg")]
+    pub fn recvmsg(&self, buffers: &[&mut[u8]], cmsg_buffer: &mut [u8], flags: RecvMsgFlags) -> io::Result<RecvMsgResult> {
         let mut result = Err(io::Error::new(io::ErrorKind::Other, "programming error"));
         let addr = try!(SocketAddr::new(|addr, len| {
             unsafe {
@@ -883,10 +885,9 @@ impl UnixDatagram {
     ///
     /// ctrl_msgs are special ancillary data that can be sent, such as file descriptors and Unix credentials
     ///
-    /// flags is a pass-through of the flags specified in the sendmsg(2) man page
-    ///
     /// On success, returns the number of bytes written.
-    pub fn sendmsg<P: AsRef<Path>>(&self, path: Option<P>, buffers: &[&[u8]], ctrl_msgs: &[ControlMsg], flags: libc::c_int) -> io::Result<usize> {
+    #[cfg(feature = "sendmsg")]
+    pub fn sendmsg<P: AsRef<Path>>(&self, path: Option<P>, buffers: &[&[u8]], ctrl_msgs: &[ControlMsg], flags: SendMsgFlags) -> io::Result<usize> {
         unsafe {
             let dst = match path {
                 None => None,
@@ -955,6 +956,7 @@ impl UnixDatagram {
     }
 
     /// Enable or disable receiving SCM_CREDENTIALS messages
+    #[cfg(feature = "sendmsg")]
     pub fn set_passcred(&self, receive_creds: bool) -> io::Result<()> {
         self.inner.set_passcred(receive_creds)
     }
@@ -988,7 +990,7 @@ mod test {
     use std::path::Path;
     use self::tempdir::TempDir;
 
-    use {UnixListener, UnixStream, UnixDatagram, AddressKind, ControlMsg, RecvMsgResult, UCred, MSG_CTRUNC};
+    use {UnixListener, UnixStream, UnixDatagram, AddressKind};
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -1326,24 +1328,29 @@ mod test {
     }
 
     /// Sends "hello" on the data channel and the specified cmsgs on the control channel
-    fn sendmsg_helper<P: AsRef<Path>>(s: &UnixDatagram, dst: Option<P>, cmsgs: &[ControlMsg]) {
+    #[cfg(feature = "sendmsg")]
+    fn sendmsg_helper<P: AsRef<Path>>(s: &UnixDatagram, dst: Option<P>, cmsgs: &[super::ControlMsg]) {
+        use SendMsgFlags;
         let msg = b"he";
         let msg2 = b"llo";
-        let sent_bytes = or_panic!(s.sendmsg(dst, &[&msg[..], &msg2[..]], cmsgs, 0));
+        let sent_bytes = or_panic!(s.sendmsg(dst, &[&msg[..], &msg2[..]], cmsgs, SendMsgFlags::default()));
         assert_eq!(sent_bytes, 5);
     }
 
     /// Expects to receive "hello" on the data channel, and uses the given buf for cmsgs
-    fn recvmsg_helper(s: &UnixDatagram, cmsg_buf: &mut [u8]) -> RecvMsgResult {
+    #[cfg(feature = "sendmsg")]
+    fn recvmsg_helper(s: &UnixDatagram, cmsg_buf: &mut [u8]) -> super::RecvMsgResult {
+        use RecvMsgFlags;
         let mut buf = [0; 3];
         let mut buf2 = [0; 3];
-        let result = or_panic!(s.recvmsg(&[&mut buf[..], &mut buf2[..]], cmsg_buf, 0));
+        let result = or_panic!(s.recvmsg(&[&mut buf[..], &mut buf2[..]], cmsg_buf, RecvMsgFlags::default()));
         assert_eq!(result.data_bytes, 5);
         assert_eq!(&buf[..], b"hel");
         assert_eq!(&buf2[..2], b"lo");
         result
     }
 
+    #[cfg(feature = "sendmsg")]
     #[test]
     fn test_sendmsg_to() {
         let dir = or_panic!(TempDir::new("unix_socket"));
@@ -1360,6 +1367,7 @@ mod test {
         assert_eq!(&buf[..5], b"hello");
     }
 
+    #[cfg(feature = "sendmsg")]
     #[test]
     fn test_recvmsg_sender() {
         let dir = or_panic!(TempDir::new("unix_socket"));
@@ -1377,16 +1385,17 @@ mod test {
         }
     }
 
-    #[cfg(feature = "from_raw_fd")]
+    #[cfg(all(feature = "from_raw_fd", feature = "sendmsg"))]
     #[test]
     fn test_ctrunc() {
+        use ControlMsg;
+
         let (s1, s2) = or_panic!(UnixDatagram::pair());
         let thread = thread::spawn(move || {
             let mut cmsg_buf = [0; 1];
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             assert_eq!(result.control_msgs.len(), 0);
-            // Make sure the control messages were reported truncated
-            assert_eq!(result.flags & MSG_CTRUNC, MSG_CTRUNC);
+            assert!(result.flags.control_truncated);
         });
 
         let (_, theirs) = or_panic!(UnixDatagram::pair());
@@ -1398,8 +1407,11 @@ mod test {
     }
 
 
+    #[cfg(feature = "sendmsg")]
     #[test]
     fn test_send_credentials_without_passcred() {
+        use {ControlMsg, UCred};
+
         // Without passcred, the ucred should be dropped
         let (s1, s2) = or_panic!(UnixDatagram::pair());
         let thread = thread::spawn(move || {
@@ -1407,8 +1419,7 @@ mod test {
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             drop(cmsg_buf);
             assert_eq!(result.control_msgs.len(), 0);
-            // Make sure the control messages weren't truncated
-            assert_eq!(result.flags & MSG_CTRUNC, 0);
+            assert!(!result.flags.control_truncated);
         });
 
         let cmsg = unsafe { ControlMsg::Credentials(UCred{
@@ -1422,6 +1433,7 @@ mod test {
         thread.join().unwrap();
     }
 
+    #[cfg(feature = "sendmsg")]
     #[test]
     fn test_send_credentials_with_passcred() {
         // With passcred, the ucred should be sent.
@@ -1431,6 +1443,8 @@ mod test {
         // but it will not demonstrate that we are correctly sending it (other than not
         // triggering an EINVAL).
 
+        use {ControlMsg, UCred};
+
         let (s1, s2) = or_panic!(UnixDatagram::pair());
         let thread = thread::spawn(move || {
             or_panic!(s1.set_passcred(true));
@@ -1438,8 +1452,7 @@ mod test {
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             drop(cmsg_buf);
             assert_eq!(result.control_msgs.len(), 1);
-            // Make sure the control messages weren't truncated
-            assert_eq!(result.flags & MSG_CTRUNC, 0);
+            assert!(!result.flags.control_truncated);
 
             for cmsg in result.control_msgs {
                 match cmsg {
@@ -1466,17 +1479,17 @@ mod test {
         thread.join().unwrap();
     }
 
-    #[cfg(feature = "from_raw_fd")]
+    #[cfg(all(feature = "from_raw_fd", feature = "sendmsg"))]
     #[test]
     fn test_send_fds() {
+        use ControlMsg;
         let (s1, s2) = or_panic!(UnixDatagram::pair());
         let thread = thread::spawn(move || {
             let mut cmsg_buf = [0; 4096];
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             drop(cmsg_buf);
             assert_eq!(result.control_msgs.len(), 1);
-            // Make sure the control messages weren't truncated
-            assert_eq!(result.flags & MSG_CTRUNC, 0);
+            assert!(!result.flags.control_truncated);
 
             for cmsg in result.control_msgs {
                 match cmsg {

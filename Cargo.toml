@@ -8,7 +8,6 @@ repository = "https://github.com/sfackler/rust-unix-socket"
 documentation = "https://sfackler.github.io/rust-unix-socket/doc/v0.4.5/unix_socket"
 readme = "README.md"
 keywords = ["posix", "unix", "socket", "domain"]
-links = "cmsg_manip"
 build = "build.rs"
 
 [dependencies]
@@ -22,7 +21,8 @@ gcc = "0.3"
 tempdir = "0.3"
 
 [features]
-default = ["from_raw_fd"]
+default = ["from_raw_fd", "sendmsg"]
 
 from_raw_fd = []
 socket_timeout = []
+sendmsg = []

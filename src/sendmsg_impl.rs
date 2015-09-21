@@ -14,7 +14,6 @@ mod raw {
     }
 
     #[allow(dead_code)]
-    #[link(name = "cmsg_manip")]
     extern {
         pub static cmsghdr_size: libc::size_t;
         pub static iovec_size: libc::size_t;
@@ -29,8 +28,12 @@ mod raw {
         pub static msg_eor: libc::c_int;
         pub static msg_trunc: libc::c_int;
         pub static msg_ctrunc: libc::c_int;
-        pub static msg_oob: libc::c_int;
         pub static msg_errqueue: libc::c_int;
+        pub static msg_dontwait: libc::c_int;
+        pub static msg_cmsg_cloexec: libc::c_int;
+        pub static msg_nosignal: libc::c_int;
+        pub static msg_peek: libc::c_int;
+        pub static msg_waitall: libc::c_int;
 
         pub fn cmsg_firsthdr(msgh: *const libc::c_void) -> *const libc::c_void;
         pub fn cmsg_nxthdr(msgh: *const libc::c_void, cmsg: *const libc::c_void) -> *const libc::c_void;
@@ -46,18 +49,22 @@ pub use self::raw::so_passcred as SO_PASSCRED;
 pub use self::raw::scm_credentials as SCM_CREDENTIALS;
 pub use self::raw::scm_rights as SCM_RIGHTS;
 
-pub use self::raw::msg_eor as MSG_EOR;
-pub use self::raw::msg_trunc as MSG_TRUNC;
-pub use self::raw::msg_ctrunc as MSG_CTRUNC;
-pub use self::raw::msg_oob as MSG_OOB;
-pub use self::raw::msg_errqueue as MSG_ERRQUEUE;
+use self::raw::msg_eor as MSG_EOR;
+use self::raw::msg_trunc as MSG_TRUNC;
+use self::raw::msg_ctrunc as MSG_CTRUNC;
+use self::raw::msg_errqueue as MSG_ERRQUEUE;
+use self::raw::msg_dontwait as MSG_DONTWAIT;
+use self::raw::msg_cmsg_cloexec as MSG_CMSG_CLOEXEC;
+use self::raw::msg_nosignal as MSG_NOSIGNAL;
+use self::raw::msg_peek as MSG_PEEK;
+use self::raw::msg_waitall as MSG_WAITALL;
 
 pub unsafe fn sendmsg(
     socket: libc::c_int, 
     dst: Option<(libc::sockaddr_un, libc::socklen_t)>, 
     buffers: &[&[u8]],
     ctrl_msgs: &[ControlMsg],
-    flags: libc::c_int) -> io::Result<usize> {
+    flags: SendMsgFlags) -> io::Result<usize> {
 
     let mut msg: MsgHdr = mem::zeroed();
 
@@ -121,7 +128,7 @@ pub unsafe fn sendmsg(
         cur_cmsg = raw::cmsg_nxthdr(msg_addr, cur_cmsg);
     }
     
-    let res = raw::sendmsg(socket, msg_addr, flags);
+    let res = raw::sendmsg(socket, msg_addr, flags.as_cint());
     if res < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -132,14 +139,14 @@ pub unsafe fn sendmsg(
 pub struct InternalRecvMsgResult {
     pub data_bytes: usize,
     pub control_msgs: Vec<ControlMsg>,
-    pub flags: libc::c_int,
+    pub flags: RecvMsgResultFlags,
 }
 
 pub unsafe fn recvmsg(
     socket: libc::c_int, 
     buffers: &[&mut [u8]],
     cmsg_buffer: &mut [u8],
-    flags: libc::c_int,
+    flags: RecvMsgFlags,
     sender_addr: *mut libc::sockaddr,
     sender_len: *mut libc::socklen_t) -> io::Result<InternalRecvMsgResult> {
 
@@ -161,7 +168,7 @@ pub unsafe fn recvmsg(
     msg.msg_controllen = cmsg_buffer.len() as libc::size_t;
 
     let msg_addr = (&mut msg as *mut MsgHdr) as *mut libc::c_void;
-    let recvmsg_res = raw::recvmsg(socket, msg_addr, flags);
+    let recvmsg_res = raw::recvmsg(socket, msg_addr, flags.as_cint());
     if recvmsg_res < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -202,8 +209,75 @@ pub unsafe fn recvmsg(
     Ok(InternalRecvMsgResult {
         data_bytes: recvmsg_res as usize,
         control_msgs: cmsgs,
-        flags: msg.msg_flags,
+        flags: RecvMsgResultFlags::from_cint(msg.msg_flags),
     })
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+/// Flags given to sendmsg.  See sendmsg(2) for more details.
+pub struct SendMsgFlags {
+    /// Do not block (MSG_DONTWAIT)
+    pub dont_wait: bool,
+    /// Mark this packet as the end of a record (used for SOCK_SEQPACKET connections) (MSG_EOR)
+    pub end_of_record: bool,
+    /// Do not receive SIGPIPE if the other end breaks the connection (MSG_NOSIGNAL)
+    pub no_signal: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+/// Flags given to recvmsg.  See recvmsg(2) for more details.
+pub struct RecvMsgFlags {
+    /// Sets the close-on-exec flag for any file descriptors received via SCM_RIGHTS (MSG_CMSG_CLOEXEC)
+    pub cmsg_cloexec: bool,
+    /// Do not block (MSG_DONTWAIT)
+    pub dont_wait: bool,
+    /// Do not remove the retrieved data from the receive queue (the next call will return the same data) (MSG_PEEK)
+    pub peek: bool,
+    /// Wait for the buffers to be filled (may still be interrupted by a signal or the socket hanging up) (MSG_WAITALL)
+    pub wait_all: bool,
+    // TODO: Add support for MSG_ERRQUEUE (need to support more cmsgs)
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+/// Flags returned by recvmsg.  See recvmsg(2) for more details.
+pub struct RecvMsgResultFlags {
+    /// The returned data marks the end of a record (used for SOCK_SEQPACKET) (MSG_EOR)
+    pub end_of_record: bool,
+    /// Some data was discarded due to the provided buffers being too short (MSG_TRUNC)
+    pub truncated: bool,
+    /// Some control data was discarded (MSG_CTRUNC)
+    pub control_truncated: bool,
+}
+
+impl SendMsgFlags {
+    fn as_cint(&self) -> libc::c_int {
+        let mut result = 0;
+        if self.dont_wait { result |= MSG_DONTWAIT; }
+        if self.end_of_record { result |= MSG_EOR; }
+        if self.no_signal { result |= MSG_NOSIGNAL; }
+        result
+    }
+}
+
+impl RecvMsgFlags {
+    fn as_cint(&self) -> libc::c_int {
+        let mut result = 0;
+        if self.cmsg_cloexec { result |= MSG_CMSG_CLOEXEC; }
+        if self.dont_wait { result |= MSG_DONTWAIT; }
+        if self.peek { result |= MSG_PEEK; }
+        if self.wait_all { result |= MSG_WAITALL; }
+        result
+    }
+}
+
+impl RecvMsgResultFlags {
+    fn from_cint(flags: libc::c_int) -> RecvMsgResultFlags {
+        RecvMsgResultFlags {
+            end_of_record: (flags & MSG_EOR) != 0,
+            truncated: (flags & MSG_TRUNC) != 0,
+            control_truncated: (flags & MSG_CTRUNC) != 0,
+        }
+    }
 }
 
 #[repr(C)]

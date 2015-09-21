@@ -1,3 +1,4 @@
+// Need to use GNU_SOURCE for ucred struct
 #define _GNU_SOURCE
 #include <sys/socket.h>
 
@@ -13,8 +14,12 @@ int so_passcred = SO_PASSCRED;
 int msg_eor = MSG_EOR;
 int msg_trunc = MSG_TRUNC;
 int msg_ctrunc = MSG_CTRUNC;
-int msg_oob = MSG_OOB;
 int msg_errqueue = MSG_ERRQUEUE;
+int msg_dontwait = MSG_DONTWAIT;
+int msg_cmsg_cloexec = MSG_CMSG_CLOEXEC;
+int msg_nosignal = MSG_NOSIGNAL;
+int msg_peek = MSG_PEEK;
+int msg_waitall = MSG_WAITALL;
 
 struct cmsghdr * cmsg_firsthdr(struct msghdr *msgh) {
     return CMSG_FIRSTHDR(msgh);
