@@ -213,43 +213,60 @@ pub unsafe fn recvmsg(
     })
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 /// Flags given to sendmsg.  See sendmsg(2) for more details.
 pub struct SendMsgFlags {
-    /// Do not block (MSG_DONTWAIT)
-    pub dont_wait: bool,
-    /// Mark this packet as the end of a record (used for SOCK_SEQPACKET connections) (MSG_EOR)
-    pub end_of_record: bool,
-    /// Do not receive SIGPIPE if the other end breaks the connection (MSG_NOSIGNAL)
-    pub no_signal: bool,
+    dont_wait: bool,
+    end_of_record: bool,
+    no_signal: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 /// Flags given to recvmsg.  See recvmsg(2) for more details.
 pub struct RecvMsgFlags {
-    /// Sets the close-on-exec flag for any file descriptors received via SCM_RIGHTS (MSG_CMSG_CLOEXEC)
-    pub cmsg_cloexec: bool,
-    /// Do not block (MSG_DONTWAIT)
-    pub dont_wait: bool,
-    /// Do not remove the retrieved data from the receive queue (the next call will return the same data) (MSG_PEEK)
-    pub peek: bool,
-    /// Wait for the buffers to be filled (may still be interrupted by a signal or the socket hanging up) (MSG_WAITALL)
-    pub wait_all: bool,
+    cmsg_cloexec: bool,
+    dont_wait: bool,
+    peek: bool,
+    wait_all: bool,
     // TODO: Add support for MSG_ERRQUEUE (need to support more cmsgs)
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 /// Flags returned by recvmsg.  See recvmsg(2) for more details.
 pub struct RecvMsgResultFlags {
-    /// The returned data marks the end of a record (used for SOCK_SEQPACKET) (MSG_EOR)
-    pub end_of_record: bool,
-    /// Some data was discarded due to the provided buffers being too short (MSG_TRUNC)
-    pub truncated: bool,
-    /// Some control data was discarded (MSG_CTRUNC)
-    pub control_truncated: bool,
+    end_of_record: bool,
+    truncated: bool,
+    control_truncated: bool,
 }
 
 impl SendMsgFlags {
+    /// Create a default SendMsgFlags
+    pub fn new() -> SendMsgFlags {
+        SendMsgFlags {
+            dont_wait: false,
+            end_of_record: false,
+            no_signal: false,
+        }
+    }
+
+    /// Do not block (MSG_DONTWAIT)
+    pub fn dont_wait(mut self, v: bool) -> SendMsgFlags {
+        self.dont_wait = v;
+        self
+    }
+
+    /// Mark this packet as the end of a record (used for SOCK_SEQPACKET connections) (MSG_EOR)
+    pub fn end_of_record(mut self, v: bool) -> SendMsgFlags {
+        self.end_of_record = v;
+        self
+    }
+
+    /// Do not receive SIGPIPE if the other end breaks the connection (MSG_NOSIGNAL)
+    pub fn no_signal(mut self, v: bool) -> SendMsgFlags {
+        self.no_signal = v;
+        self
+    }
+
     fn as_cint(&self) -> libc::c_int {
         let mut result = 0;
         if self.dont_wait { result |= MSG_DONTWAIT; }
@@ -260,6 +277,40 @@ impl SendMsgFlags {
 }
 
 impl RecvMsgFlags {
+    /// Create a default RecvMsgFlags
+    pub fn new() -> RecvMsgFlags {
+        RecvMsgFlags {
+            cmsg_cloexec: false,
+            dont_wait: false,
+            peek: false,
+            wait_all: false,
+        }
+    }
+
+    /// Sets the close-on-exec flag for any file descriptors received via SCM_RIGHTS (MSG_CMSG_CLOEXEC)
+    pub fn cmsg_cloexec(mut self, v: bool) -> RecvMsgFlags {
+        self.cmsg_cloexec = v;
+        self
+    }
+
+    /// Do not block (MSG_DONTWAIT)
+    pub fn dont_wait(mut self, v: bool) -> RecvMsgFlags {
+        self.dont_wait = v;
+        self
+    }
+
+    /// Do not remove the retrieved data from the receive queue (the next call will return the same data) (MSG_PEEK)
+    pub fn peek(mut self, v: bool) -> RecvMsgFlags {
+        self.peek = v;
+        self
+    }
+
+    /// Wait for the buffers to be filled (may still be interrupted by a signal or the socket hanging up) (MSG_WAITALL)
+    pub fn wait_all(mut self, v: bool) -> RecvMsgFlags {
+        self.wait_all = v;
+        self
+    }
+
     fn as_cint(&self) -> libc::c_int {
         let mut result = 0;
         if self.cmsg_cloexec { result |= MSG_CMSG_CLOEXEC; }
@@ -271,6 +322,21 @@ impl RecvMsgFlags {
 }
 
 impl RecvMsgResultFlags {
+    /// The returned data marks the end of a record (used for SOCK_SEQPACKET) (MSG_EOR)
+    pub fn end_of_record(&self) -> bool {
+        self.end_of_record
+    }
+
+    /// Some data was discarded due to the provided buffers being too short (MSG_TRUNC)
+    pub fn truncated(&self) -> bool {
+        self.truncated
+    }
+
+    /// Some control data was discarded (MSG_CTRUNC)
+    pub fn control_truncated(&self) -> bool {
+        self.control_truncated
+    }
+
     fn from_cint(flags: libc::c_int) -> RecvMsgResultFlags {
         RecvMsgResultFlags {
             end_of_record: (flags & MSG_EOR) != 0,

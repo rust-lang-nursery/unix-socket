@@ -18,7 +18,7 @@ fn handle_parent(sock: UnixDatagram) {
         gid: libc::getgid(),
     }) };
     println!("cmsg {:?}", cmsg2);
-    let sent_bytes = sock.sendmsg::<&Path>(None, &[&[]], &[cmsg, cmsg2], SendMsgFlags::default()).unwrap();
+    let sent_bytes = sock.sendmsg::<&Path>(None, &[&[]], &[cmsg, cmsg2], SendMsgFlags::new()).unwrap();
     assert_eq!(sent_bytes, 0);
     drop(child2);
     println!("Parent sent child SCM_RIGHTS fd");
@@ -33,7 +33,8 @@ fn handle_parent(sock: UnixDatagram) {
 fn handle_child(sock: UnixDatagram) {
     sock.set_passcred(true).unwrap();
     let mut cmsg_buf = &mut [0u8; 4096];
-    let result = sock.recvmsg(&[&mut[]], cmsg_buf, RecvMsgFlags::default()).unwrap();
+    let flags = RecvMsgFlags::new().cmsg_cloexec(true);
+    let result = sock.recvmsg(&[&mut[]], cmsg_buf, flags).unwrap();
     assert_eq!(result.control_msgs.len(), 2);
 
     let mut new_sock = None;

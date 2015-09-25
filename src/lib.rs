@@ -1333,7 +1333,7 @@ mod test {
         use SendMsgFlags;
         let msg = b"he";
         let msg2 = b"llo";
-        let sent_bytes = or_panic!(s.sendmsg(dst, &[&msg[..], &msg2[..]], cmsgs, SendMsgFlags::default()));
+        let sent_bytes = or_panic!(s.sendmsg(dst, &[&msg[..], &msg2[..]], cmsgs, SendMsgFlags::new()));
         assert_eq!(sent_bytes, 5);
     }
 
@@ -1343,7 +1343,7 @@ mod test {
         use RecvMsgFlags;
         let mut buf = [0; 3];
         let mut buf2 = [0; 3];
-        let result = or_panic!(s.recvmsg(&[&mut buf[..], &mut buf2[..]], cmsg_buf, RecvMsgFlags::default()));
+        let result = or_panic!(s.recvmsg(&[&mut buf[..], &mut buf2[..]], cmsg_buf, RecvMsgFlags::new()));
         assert_eq!(result.data_bytes, 5);
         assert_eq!(&buf[..], b"hel");
         assert_eq!(&buf2[..2], b"lo");
@@ -1395,7 +1395,7 @@ mod test {
             let mut cmsg_buf = [0; 1];
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             assert_eq!(result.control_msgs.len(), 0);
-            assert!(result.flags.control_truncated);
+            assert!(result.flags.control_truncated());
         });
 
         let (_, theirs) = or_panic!(UnixDatagram::pair());
@@ -1419,7 +1419,7 @@ mod test {
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             drop(cmsg_buf);
             assert_eq!(result.control_msgs.len(), 0);
-            assert!(!result.flags.control_truncated);
+            assert!(!result.flags.control_truncated());
         });
 
         let cmsg = unsafe { ControlMsg::Credentials(UCred{
@@ -1452,7 +1452,7 @@ mod test {
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             drop(cmsg_buf);
             assert_eq!(result.control_msgs.len(), 1);
-            assert!(!result.flags.control_truncated);
+            assert!(!result.flags.control_truncated());
 
             for cmsg in result.control_msgs {
                 match cmsg {
@@ -1489,7 +1489,7 @@ mod test {
             let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
             drop(cmsg_buf);
             assert_eq!(result.control_msgs.len(), 1);
-            assert!(!result.flags.control_truncated);
+            assert!(!result.flags.control_truncated());
 
             for cmsg in result.control_msgs {
                 match cmsg {
