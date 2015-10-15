@@ -804,24 +804,21 @@ impl UnixDatagram {
 
     /// Receives data on the socket.
     ///
-    /// If path is None, the peer address set by the `connect` method will be used.  If it has not
-    /// been set, then this method will return an error.
-    ///
     /// This interface allows receiving data into multiple buffers.  This acts as if the buffers had been
     /// concatenated in the order they were given.
     ///
-    /// cmsg_buffer is space to use for storing control messages.
-    ///
     /// On success, returns the number of bytes written.
     #[cfg(feature = "sendmsg")]
-    pub fn recvmsg(&self, buffers: &[&mut[u8]], cmsg_buffer: &mut [u8], flags: RecvMsgFlags) -> io::Result<RecvMsgResult> {
+    pub fn recvmsg(&self, buffers: &[&mut[u8]], flags: RecvMsgFlags) -> io::Result<RecvMsgResult> {
         let mut result = Err(io::Error::new(io::ErrorKind::Other, "programming error"));
         let addr = try!(SocketAddr::new(|addr, len| {
+            const CMSG_BUFFER_SIZE: usize = 4096;
+            let mut cmsg_buffer = [0u8; CMSG_BUFFER_SIZE];
             unsafe {
                 result = sendmsg_impl::recvmsg(
                         self.inner.0,
                         buffers,
-                        cmsg_buffer,
+                        &mut cmsg_buffer,
                         flags,
                         addr,
                         len);
@@ -1339,11 +1336,11 @@ mod test {
 
     /// Expects to receive "hello" on the data channel, and uses the given buf for cmsgs
     #[cfg(feature = "sendmsg")]
-    fn recvmsg_helper(s: &UnixDatagram, cmsg_buf: &mut [u8]) -> super::RecvMsgResult {
+    fn recvmsg_helper(s: &UnixDatagram) -> super::RecvMsgResult {
         use RecvMsgFlags;
         let mut buf = [0; 3];
         let mut buf2 = [0; 3];
-        let result = or_panic!(s.recvmsg(&[&mut buf[..], &mut buf2[..]], cmsg_buf, RecvMsgFlags::new()));
+        let result = or_panic!(s.recvmsg(&[&mut buf[..], &mut buf2[..]], RecvMsgFlags::new()));
         assert_eq!(result.data_bytes, 5);
         assert_eq!(&buf[..], b"hel");
         assert_eq!(&buf2[..2], b"lo");
@@ -1378,34 +1375,12 @@ mod test {
         let sock2 = or_panic!(UnixDatagram::bind(&path2));
 
         assert_eq!(or_panic!(sock1.send_to(b"hello", &path2)), 5);
-        let result = recvmsg_helper(&sock2, &mut []);
+        let result = recvmsg_helper(&sock2);
         match result.sender.address() {
             AddressKind::Pathname(p) => assert_eq!(p, path1.as_path()),
             _ => unreachable!(),
         }
     }
-
-    #[cfg(all(feature = "from_raw_fd", feature = "sendmsg"))]
-    #[test]
-    fn test_ctrunc() {
-        use ControlMsg;
-
-        let (s1, s2) = or_panic!(UnixDatagram::pair());
-        let thread = thread::spawn(move || {
-            let mut cmsg_buf = [0; 1];
-            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
-            assert_eq!(result.control_msgs.len(), 0);
-            assert!(result.flags.control_truncated());
-        });
-
-        let (_, theirs) = or_panic!(UnixDatagram::pair());
-        let cmsg = ControlMsg::Rights(vec![theirs.as_raw_fd()]);
-        sendmsg_helper::<&Path>(&s2, None, &[cmsg]);
-        drop(s2);
-
-        thread.join().unwrap();
-    }
-
 
     #[cfg(feature = "sendmsg")]
     #[test]
@@ -1415,9 +1390,7 @@ mod test {
         // Without passcred, the ucred should be dropped
         let (s1, s2) = or_panic!(UnixDatagram::pair());
         let thread = thread::spawn(move || {
-            let mut cmsg_buf = [0; 4096];
-            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
-            drop(cmsg_buf);
+            let result = recvmsg_helper(&s1);
             assert_eq!(result.control_msgs.len(), 0);
             assert!(!result.flags.control_truncated());
         });
@@ -1448,9 +1421,7 @@ mod test {
         let (s1, s2) = or_panic!(UnixDatagram::pair());
         let thread = thread::spawn(move || {
             or_panic!(s1.set_passcred(true));
-            let mut cmsg_buf = [0; 4096];
-            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
-            drop(cmsg_buf);
+            let result = recvmsg_helper(&s1);
             assert_eq!(result.control_msgs.len(), 1);
             assert!(!result.flags.control_truncated());
 
@@ -1485,9 +1456,7 @@ mod test {
         use ControlMsg;
         let (s1, s2) = or_panic!(UnixDatagram::pair());
         let thread = thread::spawn(move || {
-            let mut cmsg_buf = [0; 4096];
-            let result = recvmsg_helper(&s1, &mut cmsg_buf[..]);
-            drop(cmsg_buf);
+            let result = recvmsg_helper(&s1);
             assert_eq!(result.control_msgs.len(), 1);
             assert!(!result.flags.control_truncated());
 

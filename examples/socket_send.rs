@@ -32,9 +32,8 @@ fn handle_parent(sock: UnixDatagram) {
 #[cfg(feature = "sendmsg")]
 fn handle_child(sock: UnixDatagram) {
     sock.set_passcred(true).unwrap();
-    let mut cmsg_buf = &mut [0u8; 4096];
     let flags = RecvMsgFlags::new().cmsg_cloexec(true);
-    let result = sock.recvmsg(&[&mut[]], cmsg_buf, flags).unwrap();
+    let result = sock.recvmsg(&[&mut[]], flags).unwrap();
     assert_eq!(result.control_msgs.len(), 2);
 
     let mut new_sock = None;

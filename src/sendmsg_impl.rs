@@ -52,7 +52,6 @@ pub use self::raw::scm_rights as SCM_RIGHTS;
 use self::raw::msg_eor as MSG_EOR;
 use self::raw::msg_trunc as MSG_TRUNC;
 use self::raw::msg_ctrunc as MSG_CTRUNC;
-use self::raw::msg_errqueue as MSG_ERRQUEUE;
 use self::raw::msg_dontwait as MSG_DONTWAIT;
 use self::raw::msg_cmsg_cloexec as MSG_CMSG_CLOEXEC;
 use self::raw::msg_nosignal as MSG_NOSIGNAL;
