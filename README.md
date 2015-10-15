@@ -1,7 +1,7 @@
-# rust-unix-socket
+# unix-socket
 
-[![Build Status](https://travis-ci.org/sfackler/rust-unix-socket.svg?branch=master)](https://travis-ci.org/sfackler/rust-unix-socket) [![Latest Version](https://img.shields.io/crates/v/unix_socket.svg)](https://crates.io/crates/unix_socket)
+[![Build Status](https://travis-ci.org/rust-lang-nursery/unix-socket.svg?branch=master)](https://travis-ci.org/rust-lang-nursery/unix-socket) [![Latest Version](https://img.shields.io/crates/v/unix_socket.svg)](https://crates.io/crates/unix_socket)
 
 Support for Unix domain socket clients and servers.
 
-[Documentation](https://sfackler.github.io/rust-unix-socket/doc/v0.4.5/unix_socket)
+[Documentation](https://doc.rust-lang.org/unix-socket/doc/v0.4.5/unix_socket)
