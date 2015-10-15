@@ -2,7 +2,7 @@
 name = "unix_socket"
 version = "0.4.5"
 authors = ["Steven Fackler <sfackler@gmail.com>"]
-license = "MIT"
+license = "MIT/Apache-2.0"
 description = "Unix domain socket bindings"
 repository = "https://github.com/rust-lang-nursery/unix-socket"
 documentation = "https://doc.rust-lang.org/unix-socket/doc/v0.4.5/unix_socket"
