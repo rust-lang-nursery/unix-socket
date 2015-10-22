@@ -3,6 +3,8 @@
 #![doc(html_root_url="https://doc.rust-lang.org/unix-socket/doc/v0.4.6")]
 #![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
 
+#[macro_use]
+extern crate cfg_if;
 extern crate debug_builders;
 extern crate libc;
 
@@ -21,6 +23,14 @@ use std::fmt;
 use std::path::Path;
 use std::mem::size_of;
 
+cfg_if! {
+    if #[cfg(any(target_os = "linux", target_os = "android"))] {
+        const FIONBIO: libc::c_int = 0x5421;
+    } else {
+        const FIONBIO: libc::c_ulong = 0x8004667e;
+    }
+}
+
 extern "C" {
     fn socketpair(domain: libc::c_int,
                   ty: libc::c_int,
@@ -28,7 +38,6 @@ extern "C" {
                   sv: *mut [libc::c_int; 2])
                   -> libc::c_int;
 
-    #[cfg(feature = "socket_timeout")]
     fn getsockopt(socket: libc::c_int,
                   level: libc::c_int,
                   option_name: libc::c_int,
@@ -165,6 +174,31 @@ impl Inner {
                                  &timeout as *const _ as *const _,
                                  mem::size_of::<libc::timeval>() as libc::socklen_t))
                 .map(|_| ())
+        }
+    }
+
+    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        let mut nonblocking = nonblocking as libc::c_ulong;
+        unsafe {
+            cvt(libc::funcs::bsd44::ioctl(self.0, FIONBIO, &mut nonblocking)).map(|_| ())
+        }
+    }
+
+    fn take_error(&self) -> io::Result<Option<io::Error>> {
+        let mut errno: libc::c_int = 0;
+
+        unsafe {
+            try!(cvt(getsockopt(self.0,
+                                libc::SOL_SOCKET,
+                                libc::SO_ERROR,
+                                &mut errno as *mut _ as *mut _,
+                                &mut mem::size_of_val(&errno) as *mut _ as *mut _)));
+        }
+
+        if errno == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(io::Error::from_raw_os_error(errno)))
         }
     }
 }
@@ -424,6 +458,16 @@ impl UnixStream {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
 
+    /// Moves the socket into or out of nonblocking mode.
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.inner.set_nonblocking(nonblocking)
+    }
+
+    /// Returns the value of the `SO_ERROR` option.
+    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
+        self.inner.take_error()
+    }
+
     /// Shut down the read, write, or both halves of this connection.
     ///
     /// This function will cause all pending and future I/O calls on the
@@ -583,6 +627,16 @@ impl UnixListener {
     /// Returns the socket address of the local half of this connection.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
+    }
+
+    /// Moves the socket into or out of nonblocking mode.
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.inner.set_nonblocking(nonblocking)
+    }
+
+    /// Returns the value of the `SO_ERROR` option.
+    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
+        self.inner.take_error()
     }
 
     /// Returns an iterator over incoming connections.
@@ -841,6 +895,16 @@ impl UnixDatagram {
     #[cfg(feature = "socket_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
+    }
+
+    /// Moves the socket into or out of nonblocking mode.
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.inner.set_nonblocking(nonblocking)
+    }
+
+    /// Returns the value of the `SO_ERROR` option.
+    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
+        self.inner.take_error()
     }
 
     /// Shut down the read, write, or both halves of this connection.
