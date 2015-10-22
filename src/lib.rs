@@ -5,10 +5,8 @@
 
 #[macro_use]
 extern crate cfg_if;
-extern crate debug_builders;
 extern crate libc;
 
-use debug_builders::DebugStruct;
 use std::ascii;
 use std::convert::AsRef;
 use std::cmp::{self, Ordering};
@@ -345,13 +343,13 @@ pub struct UnixStream {
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = DebugStruct::new(fmt, "UnixStream")
-            .field("fd", &self.inner.0);
+        let mut builder = fmt.debug_struct("UnixStream");
+        builder.field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
-            builder = builder.field("local", &addr);
+            builder.field("local", &addr);
         }
         if let Ok(addr) = self.peer_addr() {
-            builder = builder.field("peer", &addr);
+            builder.field("peer", &addr);
         }
         builder.finish()
     }
@@ -573,10 +571,10 @@ pub struct UnixListener {
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = DebugStruct::new(fmt, "UnixListener")
-            .field("fd", &self.inner.0);
+        let mut builder = fmt.debug_struct("UnixListener");
+        builder.field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
-            builder = builder.field("local", &addr);
+            builder.field("local", &addr);
         }
         builder.finish()
     }
@@ -713,13 +711,13 @@ pub struct UnixDatagram {
 
 impl fmt::Debug for UnixDatagram {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = DebugStruct::new(fmt, "UnixDatagram")
-            .field("fd", &self.inner.0);
+        let mut builder = fmt.debug_struct("UnixDatagram");
+        builder.field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
-            builder = builder.field("local", &addr);
+            builder.field("local", &addr);
         }
         if let Ok(addr) = self.peer_addr() {
-            builder = builder.field("peer", &addr);
+            builder.field("peer", &addr);
         }
         builder.finish()
     }
