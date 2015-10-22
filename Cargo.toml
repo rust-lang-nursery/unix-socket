@@ -12,6 +12,7 @@ keywords = ["posix", "unix", "socket", "domain"]
 [dependencies]
 libc = "0.1"
 debug-builders = "0.1"
+cfg-if = "0.1"
 
 [dev-dependencies]
 tempdir = "0.3"
