@@ -21,26 +21,11 @@ use std::fmt;
 use std::path::Path;
 use std::mem::size_of;
 
-cfg_if! {
-    if #[cfg(any(target_os = "linux", target_os = "android"))] {
-        const FIONBIO: libc::c_int = 0x5421;
-    } else {
-        const FIONBIO: libc::c_ulong = 0x8004667e;
-    }
-}
-
 extern "C" {
     fn socketpair(domain: libc::c_int,
                   ty: libc::c_int,
                   proto: libc::c_int,
                   sv: *mut [libc::c_int; 2])
-                  -> libc::c_int;
-
-    fn getsockopt(socket: libc::c_int,
-                  level: libc::c_int,
-                  option_name: libc::c_int,
-                  option_value: *mut libc::c_void,
-                  option_len: *mut libc::c_void)
                   -> libc::c_int;
 }
 
@@ -118,11 +103,11 @@ impl Inner {
         let timeout = unsafe {
             let mut timeout: libc::timeval = mem::zeroed();
             let mut size = mem::size_of::<libc::timeval>() as libc::socklen_t;
-            try!(cvt(getsockopt(self.0,
-                                libc::SOL_SOCKET,
-                                kind,
-                                &mut timeout as *mut _ as *mut _,
-                                &mut size as *mut _ as *mut _)));
+            try!(cvt(libc::getsockopt(self.0,
+                                      libc::SOL_SOCKET,
+                                      kind,
+                                      &mut timeout as *mut _ as *mut _,
+                                      &mut size as *mut _ as *mut _)));
             timeout
         };
 
@@ -178,7 +163,7 @@ impl Inner {
     fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let mut nonblocking = nonblocking as libc::c_ulong;
         unsafe {
-            cvt(libc::funcs::bsd44::ioctl(self.0, FIONBIO, &mut nonblocking)).map(|_| ())
+            cvt(libc::ioctl(self.0, libc::FIONBIO, &mut nonblocking)).map(|_| ())
         }
     }
 
@@ -186,11 +171,11 @@ impl Inner {
         let mut errno: libc::c_int = 0;
 
         unsafe {
-            try!(cvt(getsockopt(self.0,
-                                libc::SOL_SOCKET,
-                                libc::SO_ERROR,
-                                &mut errno as *mut _ as *mut _,
-                                &mut mem::size_of_val(&errno) as *mut _ as *mut _)));
+            try!(cvt(libc::getsockopt(self.0,
+                                      libc::SOL_SOCKET,
+                                      libc::SO_ERROR,
+                                      &mut errno as *mut _ as *mut _,
+                                      &mut mem::size_of_val(&errno) as *mut _ as *mut _)));
         }
 
         if errno == 0 {
