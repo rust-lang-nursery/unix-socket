@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["posix", "unix", "socket", "domain"]
 
 [dependencies]
-libc = "0.2"
+libc = "0.2.1"
 cfg-if = "0.1"
 
 [dev-dependencies]

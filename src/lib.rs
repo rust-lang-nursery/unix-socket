@@ -21,14 +21,6 @@ use std::fmt;
 use std::path::Path;
 use std::mem::size_of;
 
-extern "C" {
-    fn socketpair(domain: libc::c_int,
-                  ty: libc::c_int,
-                  proto: libc::c_int,
-                  sv: *mut [libc::c_int; 2])
-                  -> libc::c_int;
-}
-
 fn sun_path_offset() -> usize {
     unsafe {
         // Work with an actual instance of the type since using a null pointer is UB
@@ -75,7 +67,7 @@ impl Inner {
     fn new_pair(kind: libc::c_int) -> io::Result<(Inner, Inner)> {
         unsafe {
             let mut fds = [0, 0];
-            try!(cvt(socketpair(libc::AF_UNIX, kind, 0, &mut fds)));
+            try!(cvt(libc::socketpair(libc::AF_UNIX, kind, 0, fds.as_mut_ptr())));
             Ok((Inner(fds[0]), Inner(fds[1])))
         }
     }
