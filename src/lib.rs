@@ -59,9 +59,7 @@ impl Drop for Inner {
 
 impl Inner {
     fn new(kind: libc::c_int) -> io::Result<Inner> {
-        unsafe {
-            cvt(libc::socket(libc::AF_UNIX, kind, 0)).map(Inner)
-        }
+        unsafe { cvt(libc::socket(libc::AF_UNIX, kind, 0)).map(Inner) }
     }
 
     fn new_pair(kind: libc::c_int) -> io::Result<(Inner, Inner)> {
@@ -73,9 +71,7 @@ impl Inner {
     }
 
     fn try_clone(&self) -> io::Result<Inner> {
-        unsafe {
-            cvt(libc::dup(self.0)).map(Inner)
-        }
+        unsafe { cvt(libc::dup(self.0)).map(Inner) }
     }
 
     fn shutdown(&self, how: Shutdown) -> io::Result<()> {
@@ -85,9 +81,7 @@ impl Inner {
             Shutdown::Both => libc::SHUT_RDWR,
         };
 
-        unsafe {
-            cvt(libc::shutdown(self.0, how)).map(|_| ())
-        }
+        unsafe { cvt(libc::shutdown(self.0, how)).map(|_| ()) }
     }
 
     #[cfg(feature = "socket_timeout")]
@@ -154,9 +148,7 @@ impl Inner {
 
     fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let mut nonblocking = nonblocking as libc::c_ulong;
-        unsafe {
-            cvt(libc::ioctl(self.0, libc::FIONBIO, &mut nonblocking)).map(|_| ())
-        }
+        unsafe { cvt(libc::ioctl(self.0, libc::FIONBIO, &mut nonblocking)).map(|_| ()) }
     }
 
     fn take_error(&self) -> io::Result<Option<io::Error>> {
@@ -178,8 +170,7 @@ impl Inner {
     }
 }
 
-unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
-        -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
+unsafe fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
     let mut addr: libc::sockaddr_un = mem::zeroed();
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
 
@@ -189,7 +180,7 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
         // Abstract paths don't need a null terminator
         (Some(&0), Ordering::Greater) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "path must be no longer than SUN_LEN"))
+                                      "path must be no longer than SUN_LEN"));
         }
         (_, Ordering::Greater) | (_, Ordering::Equal) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -200,26 +191,20 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
     for (dst, src) in addr.sun_path.iter_mut().zip(bytes.iter()) {
         *dst = *src as libc::c_char;
     }
-    // null byte for pathname addresses is already there because we zeroed the struct
+    // null byte for pathname addresses is already there because we zeroed the
+    // struct
 
     let mut len = sun_path_offset() + bytes.len();
     match bytes.get(0) {
         Some(&0) | None => {}
-        Some(_) => len += 1
+        Some(_) => len += 1,
     }
     Ok((addr, len as libc::socklen_t))
 }
 
-/// The kind of an address associated with a Unix socket.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AddressKind<'a> {
-    /// An unnamed address.
+enum AddressKind<'a> {
     Unnamed,
-    /// An address corresponding to a path on the filesystem.
     Pathname(&'a Path),
-    /// An address in an abstract namespace unrelated to the filesystem.
-    ///
-    /// Abstract addresses are a nonportable Linux extension.
     Abstract(&'a [u8]),
 }
 
@@ -240,7 +225,8 @@ impl Clone for SocketAddr {
 
 impl SocketAddr {
     fn new<F>(f: F) -> io::Result<SocketAddr>
-            where F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int {
+        where F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int
+    {
         unsafe {
             let mut addr: libc::sockaddr_un = mem::zeroed();
             let mut len = mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
@@ -262,8 +248,25 @@ impl SocketAddr {
         }
     }
 
-    /// Returns the value of the address.
-    pub fn address<'a>(&'a self) -> AddressKind<'a> {
+    /// Returns true iff the address is unnamed.
+    pub fn is_unnamed(&self) -> bool {
+        if let AddressKind::Unnamed = self.address() {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns the contents of this address if it is a `pathname` address.
+    pub fn as_pathname(&self) -> Option<&Path> {
+        if let AddressKind::Pathname(path) = self.address() {
+            Some(path)
+        } else {
+            None
+        }
+    }
+
+    fn address<'a>(&'a self) -> AddressKind<'a> {
         let len = self.len as usize - sun_path_offset();
         let path = unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&self.addr.sun_path) };
 
@@ -283,7 +286,7 @@ impl fmt::Debug for SocketAddr {
         match self.address() {
             AddressKind::Unnamed => write!(fmt, "(unnamed)"),
             AddressKind::Abstract(name) => write!(fmt, "{} (abstract)", AsciiEscaped(name)),
-            AddressKind::Pathname(path) => write!(fmt, "{:?} (pathname)", path)
+            AddressKind::Pathname(path) => write!(fmt, "{:?} (pathname)", path),
         }
     }
 }
@@ -297,6 +300,32 @@ impl<'a> fmt::Display for AsciiEscaped<'a> {
             try!(write!(fmt, "{}", byte as char));
         }
         write!(fmt, "\"")
+    }
+}
+
+/// OS specific extension traits.
+pub mod os {
+    /// Linux specific extension traits.
+    #[cfg(target_os = "linux")]
+    pub mod linux {
+        use ::{AddressKind, SocketAddr};
+
+        /// Linux specific extensions for the `SocketAddr` type.
+        pub trait SocketAddrExt {
+            /// Returns the contents of this address (without the leading
+            /// null byte) if it is an `abstract` address.
+            fn as_abstract(&self) -> Option<&[u8]>;
+        }
+
+        impl SocketAddrExt for SocketAddr {
+            fn as_abstract(&self) -> Option<&[u8]> {
+                if let AddressKind::Abstract(path) = self.address() {
+                    Some(path)
+                } else {
+                    None
+                }
+            }
+        }
     }
 }
 
@@ -349,9 +378,7 @@ impl UnixStream {
             if ret < 0 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(UnixStream {
-                    inner: inner,
-                })
+                Ok(UnixStream { inner: inner })
             }
         }
     }
@@ -378,9 +405,7 @@ impl UnixStream {
     /// data, and options set on one stream will be propogated to the other
     /// stream.
     pub fn try_clone(&self) -> io::Result<UnixStream> {
-        Ok(UnixStream {
-            inner: try!(self.inner.try_clone())
-        })
+        Ok(UnixStream { inner: try!(self.inner.try_clone()) })
     }
 
     /// Returns the socket address of the local half of this connection.
@@ -501,9 +526,7 @@ impl AsRawFd for UnixStream {
 /// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixStream {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
-        UnixStream {
-            inner: Inner(fd)
-        }
+        UnixStream { inner: Inner(fd) }
     }
 }
 
@@ -570,9 +593,7 @@ impl UnixListener {
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
             try!(cvt(libc::listen(inner.0, 128)));
 
-            Ok(UnixListener {
-                inner: inner,
-            })
+            Ok(UnixListener { inner: inner })
         }
     }
 
@@ -590,9 +611,7 @@ impl UnixListener {
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
     pub fn try_clone(&self) -> io::Result<UnixListener> {
-        Ok(UnixListener {
-            inner: try!(self.inner.try_clone())
-        })
+        Ok(UnixListener { inner: try!(self.inner.try_clone()) })
     }
 
     /// Returns the socket address of the local half of this connection.
@@ -614,9 +633,7 @@ impl UnixListener {
     ///
     /// The iterator will never return `None`.
     pub fn incoming<'a>(&'a self) -> Incoming<'a> {
-        Incoming {
-            listener: self
-        }
+        Incoming { listener: self }
     }
 }
 
@@ -630,9 +647,7 @@ impl AsRawFd for UnixListener {
 /// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixListener {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
-        UnixListener {
-            inner: Inner(fd)
-        }
+        UnixListener { inner: Inner(fd) }
     }
 }
 
@@ -711,18 +726,14 @@ impl UnixDatagram {
 
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
 
-            Ok(UnixDatagram {
-                inner: inner,
-            })
+            Ok(UnixDatagram { inner: inner })
         }
     }
 
     /// Creates a Unix Datagram socket which is not bound to any address.
     pub fn unbound() -> io::Result<UnixDatagram> {
         let inner = try!(Inner::new(libc::SOCK_DGRAM));
-        Ok(UnixDatagram {
-            inner: inner,
-        })
+        Ok(UnixDatagram { inner: inner })
     }
 
     /// Create an unnamed pair of connected sockets.
@@ -737,9 +748,7 @@ impl UnixDatagram {
     ///
     /// The `send` method may be used to send data to the specified address.
     /// `recv` and `recv_from` will only receive data from that address.
-    pub fn connect<P: AsRef<Path>>(&self, path: P)
-        -> io::Result<()>
-    {
+    pub fn connect<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
         unsafe {
             let (addr, len) = try!(sockaddr_un(path));
 
@@ -775,7 +784,13 @@ impl UnixDatagram {
                                        0,
                                        addr,
                                        len);
-                if count > 0 { 1 } else if count == 0 { 0 } else { -1 }
+                if count > 0 {
+                    1
+                } else if count == 0 {
+                    0
+                } else {
+                    -1
+                }
             }
         }));
 
@@ -821,9 +836,9 @@ impl UnixDatagram {
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
             let count = try!(cvt_s(libc::send(self.inner.0,
-                                                buf.as_ptr() as *const _,
-                                                buf.len(),
-                                                0)));
+                                              buf.as_ptr() as *const _,
+                                              buf.len(),
+                                              0)));
             Ok(count as usize)
         }
     }
@@ -898,9 +913,7 @@ impl AsRawFd for UnixDatagram {
 /// Requires the `from_raw_fd` feature (enabled by default).
 impl std::os::unix::io::FromRawFd for UnixDatagram {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
-        UnixDatagram {
-            inner: Inner(fd)
-        }
+        UnixDatagram { inner: Inner(fd) }
     }
 }
 
@@ -913,7 +926,7 @@ mod test {
     use std::io::prelude::*;
     use self::tempdir::TempDir;
 
-    use {UnixListener, UnixStream, UnixDatagram, AddressKind};
+    use super::*;
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -941,6 +954,7 @@ mod test {
         });
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        assert_eq!(Some(&*socket_path), stream.peer_addr().unwrap().as_pathname());
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
@@ -974,8 +988,10 @@ mod test {
     }
 
     #[test]
-    #[cfg_attr(not(target_os = "linux"), ignore)]
+    #[cfg(target_os = "linux")]
     fn abstract_address() {
+        use ::os::linux::SocketAddrExt;
+
         let socket_path = "\0the path";
         let msg1 = b"hello";
         let msg2 = b"world!";
@@ -990,6 +1006,7 @@ mod test {
         });
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        assert_eq!(Some(&b"the path"[..]), stream.peer_addr().unwrap().as_abstract());
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
@@ -1050,8 +1067,9 @@ mod test {
     #[test]
     fn long_path() {
         let dir = or_panic!(TempDir::new("unix_socket"));
-        let socket_path = dir.path().join("asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasd\
-                                           fasdfasasdfasdfasdasdfasdfasdfadfasdfasdfasdfasdfasdf");
+        let socket_path = dir.path()
+                             .join("asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfa\
+                                    sasdfasdfasdasdfasdfasdfadfasdfasdfasdfasdfasdf");
         match UnixStream::connect(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
             Err(e) => panic!("unexpected error {}", e),
@@ -1180,7 +1198,7 @@ mod test {
         let mut buf = [0; 11];
         let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
         assert_eq!(usize, 11);
-        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert!(addr.is_unnamed());
         assert_eq!(msg, &buf[..]);
     }
 
@@ -1201,7 +1219,7 @@ mod test {
         let mut buf = [0; 11];
         let (usize, addr) = or_panic!(bsock1.recv_from(&mut buf));
         assert_eq!(usize, 11);
-        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert!(addr.is_unnamed());
         assert_eq!(msg, &buf[..]);
 
         // Changing default socket works too
