@@ -5,4 +5,3 @@ rust:
 - 1.2.0
 script:
 - cargo test
-- test $TRAVIS_RUST_VERSION != "nightly" || cargo test --features "from_raw_fd socket_timeout"

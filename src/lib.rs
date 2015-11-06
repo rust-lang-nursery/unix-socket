@@ -1,7 +1,6 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
 #![doc(html_root_url="https://doc.rust-lang.org/unix-socket/doc/v0.4.6")]
-#![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
 
 #[macro_use]
 extern crate cfg_if;
@@ -18,7 +17,7 @@ use std::mem;
 use std::mem::size_of;
 use std::net::Shutdown;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::io::{RawFd, AsRawFd};
+use std::os::unix::io::{RawFd, AsRawFd, FromRawFd};
 use std::path::Path;
 
 fn sun_path_offset() -> usize {
@@ -84,7 +83,6 @@ impl Inner {
         unsafe { cvt(libc::shutdown(self.0, how)).map(|_| ()) }
     }
 
-    #[cfg(feature = "socket_timeout")]
     fn timeout(&self, kind: libc::c_int) -> io::Result<Option<std::time::Duration>> {
         let timeout = unsafe {
             let mut timeout: libc::timeval = mem::zeroed();
@@ -105,7 +103,6 @@ impl Inner {
         }
     }
 
-    #[cfg(feature = "socket_timeout")]
     fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeout = match dur {
             Some(dur) => {
@@ -423,9 +420,6 @@ impl UnixStream {
     /// If the provided value is `None`, then `read` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
@@ -435,25 +429,16 @@ impl UnixStream {
     /// If the provided value is `None`, then `write` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn set_write_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<std::time::Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
@@ -522,9 +507,7 @@ impl AsRawFd for UnixStream {
     }
 }
 
-#[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature (enabled by default).
-impl std::os::unix::io::FromRawFd for UnixStream {
+impl FromRawFd for UnixStream {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
         UnixStream { inner: Inner(fd) }
     }
@@ -643,9 +626,7 @@ impl AsRawFd for UnixListener {
     }
 }
 
-#[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature (enabled by default).
-impl std::os::unix::io::FromRawFd for UnixListener {
+impl FromRawFd for UnixListener {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
         UnixListener { inner: Inner(fd) }
     }
@@ -848,9 +829,6 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `recv` and `recv_from` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
@@ -860,25 +838,16 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `send` and `send_to` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn set_write_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<std::time::Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
@@ -909,9 +878,7 @@ impl AsRawFd for UnixDatagram {
     }
 }
 
-#[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature (enabled by default).
-impl std::os::unix::io::FromRawFd for UnixDatagram {
+impl FromRawFd for UnixDatagram {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
         UnixDatagram { inner: Inner(fd) }
     }
@@ -1090,7 +1057,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "socket_timeout")]
     fn timeouts() {
         use std::time::Duration;
 
@@ -1120,7 +1086,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "socket_timeout")]
     fn test_read_timeout() {
         use std::time::Duration;
 
@@ -1133,16 +1098,11 @@ mod test {
         or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
 
         let mut buf = [0; 10];
-        let wait = Duration::span(|| {
-            let kind = stream.read(&mut buf).err().expect("expected error").kind();
-            assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
-        });
-        assert!(wait > Duration::from_millis(400));
-        assert!(wait < Duration::from_millis(1600));
+        let kind = stream.read(&mut buf).err().expect("expected error").kind();
+        assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
     }
 
     #[test]
-    #[cfg(feature = "socket_timeout")]
     fn test_read_with_timeout() {
         use std::time::Duration;
 
@@ -1161,12 +1121,8 @@ mod test {
         or_panic!(stream.read(&mut buf));
         assert_eq!(b"hello world", &buf[..]);
 
-        let wait = Duration::span(|| {
-            let kind = stream.read(&mut buf).err().expect("expected error").kind();
-            assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
-        });
-        assert!(wait > Duration::from_millis(400));
-        assert!(wait < Duration::from_millis(1600));
+        let kind = stream.read(&mut buf).err().expect("expected error").kind();
+        assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
     }
 
     #[test]
