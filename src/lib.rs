@@ -607,7 +607,7 @@ impl UnixListener {
         Ok(UnixListener { inner: try!(self.inner.try_clone()) })
     }
 
-    /// Returns the socket address of the local half of this connection.
+    /// Returns the local socket address of this listener.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
     }
