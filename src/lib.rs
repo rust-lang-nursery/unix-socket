@@ -388,13 +388,6 @@ impl UnixStream {
         Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
     }
 
-    /// # Deprecated
-    ///
-    /// Use `UnixStream::pair` instead.
-    pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
-        UnixStream::pair()
-    }
-
     /// Create a new independently owned handle to the underlying socket.
     ///
     /// The returned `UnixStream` is a reference to the same stream that this
