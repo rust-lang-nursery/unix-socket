@@ -17,7 +17,7 @@ use std::mem;
 use std::mem::size_of;
 use std::net::Shutdown;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::io::{RawFd, AsRawFd, FromRawFd};
+use std::os::unix::io::{RawFd, AsRawFd, FromRawFd, IntoRawFd};
 use std::path::Path;
 
 fn sun_path_offset() -> usize {
@@ -513,6 +513,14 @@ impl FromRawFd for UnixStream {
     }
 }
 
+impl IntoRawFd for UnixStream {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.inner.0;
+        mem::forget(self);
+        fd
+    }
+}
+
 /// A structure representing a Unix domain socket server.
 ///
 /// # Examples
@@ -629,6 +637,14 @@ impl AsRawFd for UnixListener {
 impl FromRawFd for UnixListener {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
         UnixListener { inner: Inner(fd) }
+    }
+}
+
+impl IntoRawFd for UnixListener {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.inner.0;
+        mem::forget(self);
+        fd
     }
 }
 
@@ -881,6 +897,14 @@ impl AsRawFd for UnixDatagram {
 impl FromRawFd for UnixDatagram {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
         UnixDatagram { inner: Inner(fd) }
+    }
+}
+
+impl IntoRawFd for UnixDatagram {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.inner.0;
+        mem::forget(self);
+        fd
     }
 }
 
