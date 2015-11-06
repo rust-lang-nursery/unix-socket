@@ -582,10 +582,19 @@ impl UnixListener {
     }
 
     /// Accepts a new incoming connection to this listener.
-    pub fn accept(&self) -> io::Result<UnixStream> {
+    ///
+    /// This function will block the calling thread until a new Unix connection
+    /// is established. When established, the corersponding `UnixStream` and
+    /// the remote peer's address will be returned.
+    pub fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
         unsafe {
-            cvt(libc::accept(self.inner.0, 0 as *mut _, 0 as *mut _))
-                .map(|fd| UnixStream { inner: Inner(fd) })
+            let mut fd = 0;
+            let addr = try!(SocketAddr::new(|addr, len| {
+                fd = libc::accept(self.inner.0, addr, len);
+                fd
+            }));
+
+            Ok((UnixStream { inner: Inner(fd) }, addr))
         }
     }
 
@@ -615,7 +624,8 @@ impl UnixListener {
 
     /// Returns an iterator over incoming connections.
     ///
-    /// The iterator will never return `None`.
+    /// The iterator will never return `None` and will also not yield the
+    /// peer's `SocketAddr` structure.
     pub fn incoming<'a>(&'a self) -> Incoming<'a> {
         Incoming { listener: self }
     }
@@ -662,7 +672,7 @@ impl<'a> Iterator for Incoming<'a> {
     type Item = io::Result<UnixStream>;
 
     fn next(&mut self) -> Option<io::Result<UnixStream>> {
-        Some(self.listener.accept())
+        Some(self.listener.accept().map(|s| s.0))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -930,7 +940,7 @@ mod test {
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
-            let mut stream = or_panic!(listener.accept());
+            let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
             assert_eq!(&msg1[..], &buf[..]);
@@ -982,7 +992,7 @@ mod test {
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
-            let mut stream = or_panic!(listener.accept());
+            let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
             assert_eq!(&msg1[..], &buf[..]);
@@ -1009,7 +1019,7 @@ mod test {
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
-            let mut stream = or_panic!(listener.accept());
+            let mut stream = or_panic!(listener.accept()).0;
             or_panic!(stream.write_all(msg1));
             or_panic!(stream.write_all(msg2));
         });
@@ -1131,7 +1141,7 @@ mod test {
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
         or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
 
-        let mut other_end = or_panic!(listener.accept());
+        let mut other_end = or_panic!(listener.accept()).0;
         or_panic!(other_end.write_all(b"hello world"));
 
         let mut buf = [0; 11];
