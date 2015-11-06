@@ -8,18 +8,18 @@ extern crate cfg_if;
 extern crate libc;
 
 use std::ascii;
+use std::cmp::Ordering;
 use std::convert::AsRef;
-use std::cmp::{self, Ordering};
 use std::ffi::OsStr;
+use std::fmt;
 use std::io;
-use std::net::Shutdown;
 use std::iter::IntoIterator;
 use std::mem;
-use std::os::unix::io::{RawFd, AsRawFd};
-use std::os::unix::ffi::OsStrExt;
-use std::fmt;
-use std::path::Path;
 use std::mem::size_of;
+use std::net::Shutdown;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::io::{RawFd, AsRawFd};
+use std::path::Path;
 
 fn sun_path_offset() -> usize {
     unsafe {
@@ -453,10 +453,6 @@ impl UnixStream {
     }
 }
 
-fn calc_len(buf: &[u8]) -> libc::size_t {
-    cmp::min(libc::size_t::max_value() as usize, buf.len()) as libc::size_t
-}
-
 impl io::Read for UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         io::Read::read(&mut &*self, buf)
@@ -466,7 +462,7 @@ impl io::Read for UnixStream {
 impl<'a> io::Read for &'a UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         unsafe {
-            cvt_s(libc::recv(self.inner.0, buf.as_mut_ptr() as *mut _, calc_len(buf), 0))
+            cvt_s(libc::recv(self.inner.0, buf.as_mut_ptr() as *mut _, buf.len(), 0))
                 .map(|r| r as usize)
         }
     }
@@ -485,7 +481,7 @@ impl io::Write for UnixStream {
 impl<'a> io::Write for &'a UnixStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
-            cvt_s(libc::send(self.inner.0, buf.as_ptr() as *const _, calc_len(buf), 0))
+            cvt_s(libc::send(self.inner.0, buf.as_ptr() as *const _, buf.len(), 0))
                 .map(|r| r as usize)
         }
     }
@@ -775,7 +771,7 @@ impl UnixDatagram {
             unsafe {
                 count = libc::recvfrom(self.inner.0,
                                        buf.as_mut_ptr() as *mut _,
-                                       calc_len(buf),
+                                       buf.len(),
                                        0,
                                        addr,
                                        len);
@@ -793,7 +789,7 @@ impl UnixDatagram {
         unsafe {
             let count = try!(cvt_s(libc::recv(self.inner.0,
                                               buf.as_mut_ptr() as *mut _,
-                                              calc_len(buf),
+                                              buf.len(),
                                               0)));
             Ok(count as usize)
         }
@@ -808,7 +804,7 @@ impl UnixDatagram {
 
             let count = try!(cvt_s(libc::sendto(self.inner.0,
                                                 buf.as_ptr() as *const _,
-                                                calc_len(buf),
+                                                buf.len(),
                                                 0,
                                                 &addr as *const _ as *const _,
                                                 len)));
@@ -826,7 +822,7 @@ impl UnixDatagram {
         unsafe {
             let count = try!(cvt_s(libc::send(self.inner.0,
                                                 buf.as_ptr() as *const _,
-                                                calc_len(buf),
+                                                buf.len(),
                                                 0)));
             Ok(count as usize)
         }
