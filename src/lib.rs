@@ -352,7 +352,7 @@ impl fmt::Debug for UnixStream {
 }
 
 impl UnixStream {
-    /// Connect to the socket named by `path`.
+    /// Connects to the socket named by `path`.
     ///
     /// Linux provides, as a nonportable extension, a separate "abstract"
     /// address namespace as opposed to filesystem-based addressing. If `path`
@@ -373,7 +373,7 @@ impl UnixStream {
         }
     }
 
-    /// Create an unnamed pair of connected sockets.
+    /// Creates an unnamed pair of connected sockets.
     ///
     /// Returns two `UnixStream`s which are connected to each other.
     pub fn pair() -> io::Result<(UnixStream, UnixStream)> {
@@ -381,7 +381,7 @@ impl UnixStream {
         Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
     }
 
-    /// Create a new independently owned handle to the underlying socket.
+    /// Creates a new independently owned handle to the underlying socket.
     ///
     /// The returned `UnixStream` is a reference to the same stream that this
     /// object references. Both handles will read and write the same stream of
@@ -439,7 +439,7 @@ impl UnixStream {
         self.inner.take_error()
     }
 
-    /// Shut down the read, write, or both halves of this connection.
+    /// Shuts down the read, write, or both halves of this connection.
     ///
     /// This function will cause all pending and future I/O calls on the
     /// specified portions to immediately return with an appropriate value
@@ -554,8 +554,7 @@ impl fmt::Debug for UnixListener {
 }
 
 impl UnixListener {
-    /// Creates a new `UnixListener` which will be bound to the specified
-    /// socket.
+    /// Creates a new `UnixListener` bound to the specified socket.
     ///
     /// Linux provides, as a nonportable extension, a separate "abstract"
     /// address namespace as opposed to filesystem-based addressing. If `path`
@@ -591,7 +590,7 @@ impl UnixListener {
         }
     }
 
-    /// Create a new independently owned handle to the underlying socket.
+    /// Creates a new independently owned handle to the underlying socket.
     ///
     /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
@@ -737,7 +736,7 @@ impl UnixDatagram {
         Ok((UnixDatagram { inner: i1 }, UnixDatagram { inner: i2 }))
     }
 
-    /// Connect the socket to the specified address.
+    /// Connects the socket to the specified address.
     ///
     /// The `send` method may be used to send data to the specified address.
     /// `recv` and `recv_from` will only receive data from that address.
