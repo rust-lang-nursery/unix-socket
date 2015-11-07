@@ -111,14 +111,15 @@ impl Inner {
                                               "cannot set a 0 duration timeout"));
                 }
 
-                let secs = if dur.as_secs() > libc::time_t::max_value() as u64 {
-                    libc::time_t::max_value()
+                let (secs, usecs) = if dur.as_secs() > libc::time_t::max_value() as u64 {
+                    (libc::time_t::max_value(), 999_999)
                 } else {
-                    dur.as_secs() as libc::time_t
+                    (dur.as_secs() as libc::time_t,
+                     (dur.subsec_nanos() / 1000) as libc::suseconds_t)
                 };
                 let mut timeout = libc::timeval {
                     tv_sec: secs,
-                    tv_usec: (dur.subsec_nanos() / 1000) as libc::suseconds_t,
+                    tv_usec: usecs,
                 };
                 if timeout.tv_sec == 0 && timeout.tv_usec == 0 {
                     timeout.tv_usec = 1;
