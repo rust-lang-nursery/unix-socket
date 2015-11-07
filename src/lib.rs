@@ -19,6 +19,7 @@ use std::net::Shutdown;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{RawFd, AsRawFd, FromRawFd, IntoRawFd};
 use std::path::Path;
+use std::time::Duration;
 
 fn sun_path_offset() -> usize {
     unsafe {
@@ -83,7 +84,7 @@ impl Inner {
         unsafe { cvt(libc::shutdown(self.0, how)).map(|_| ()) }
     }
 
-    fn timeout(&self, kind: libc::c_int) -> io::Result<Option<std::time::Duration>> {
+    fn timeout(&self, kind: libc::c_int) -> io::Result<Option<Duration>> {
         let timeout = unsafe {
             let mut timeout: libc::timeval = mem::zeroed();
             let mut size = mem::size_of::<libc::timeval>() as libc::socklen_t;
@@ -98,12 +99,11 @@ impl Inner {
         if timeout.tv_sec == 0 && timeout.tv_usec == 0 {
             Ok(None)
         } else {
-            Ok(Some(std::time::Duration::new(timeout.tv_sec as u64,
-                                             (timeout.tv_usec as u32) * 1000)))
+            Ok(Some(Duration::new(timeout.tv_sec as u64, (timeout.tv_usec as u32) * 1000)))
         }
     }
 
-    fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int) -> io::Result<()> {
+    fn set_timeout(&self, dur: Option<Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeout = match dur {
             Some(dur) => {
                 if dur.as_secs() == 0 && dur.subsec_nanos() == 0 {
@@ -297,7 +297,7 @@ pub mod os {
     /// Linux specific extension traits.
     #[cfg(target_os = "linux")]
     pub mod linux {
-        use ::{AddressKind, SocketAddr};
+        use {AddressKind, SocketAddr};
 
         /// Linux specific extensions for the `SocketAddr` type.
         pub trait SocketAddrExt {
@@ -405,7 +405,7 @@ impl UnixStream {
     /// If the provided value is `None`, then `read` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
 
@@ -414,17 +414,17 @@ impl UnixStream {
     /// If the provided value is `None`, then `write` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    pub fn set_write_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
-    pub fn read_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
-    pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
 
@@ -840,7 +840,7 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `recv` and `recv_from` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
 
@@ -849,17 +849,17 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `send` and `send_to` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    pub fn set_write_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
-    pub fn read_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
-    pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
 
@@ -910,6 +910,7 @@ mod test {
     use std::thread;
     use std::io;
     use std::io::prelude::*;
+    use std::time::Duration;
     use self::tempdir::TempDir;
 
     use super::*;
@@ -940,7 +941,8 @@ mod test {
         });
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
-        assert_eq!(Some(&*socket_path), stream.peer_addr().unwrap().as_pathname());
+        assert_eq!(Some(&*socket_path),
+                   stream.peer_addr().unwrap().as_pathname());
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
@@ -976,7 +978,7 @@ mod test {
     #[test]
     #[cfg(target_os = "linux")]
     fn abstract_address() {
-        use ::os::linux::SocketAddrExt;
+        use os::linux::SocketAddrExt;
 
         let socket_path = "\0the path";
         let msg1 = b"hello";
@@ -992,7 +994,8 @@ mod test {
         });
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
-        assert_eq!(Some(&b"the path"[..]), stream.peer_addr().unwrap().as_abstract());
+        assert_eq!(Some(&b"the path"[..]),
+                   stream.peer_addr().unwrap().as_abstract());
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
@@ -1077,8 +1080,6 @@ mod test {
 
     #[test]
     fn timeouts() {
-        use std::time::Duration;
-
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
@@ -1106,8 +1107,6 @@ mod test {
 
     #[test]
     fn test_read_timeout() {
-        use std::time::Duration;
-
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
@@ -1123,8 +1122,6 @@ mod test {
 
     #[test]
     fn test_read_with_timeout() {
-        use std::time::Duration;
-
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
