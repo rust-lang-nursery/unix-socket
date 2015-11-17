@@ -2,8 +2,6 @@
 #![warn(missing_docs)]
 #![doc(html_root_url="https://doc.rust-lang.org/unix-socket/doc/v0.5.0")]
 
-#[macro_use]
-extern crate cfg_if;
 extern crate libc;
 
 use std::ascii;
