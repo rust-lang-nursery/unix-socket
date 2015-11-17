@@ -4,4 +4,4 @@
 
 Support for Unix domain socket clients and servers.
 
-[Documentation](https://doc.rust-lang.org/unix-socket/doc/v0.4.6/unix_socket)
+[Documentation](https://doc.rust-lang.org/unix-socket/doc/v0.5.0/unix_socket)
