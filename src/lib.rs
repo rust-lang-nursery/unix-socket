@@ -1,41 +1,25 @@
 //! Support for Unix domain socket clients and servers.
 #![warn(missing_docs)]
-#![doc(html_root_url="https://doc.rust-lang.org/unix-socket/doc/v0.4.6")]
-#![cfg_attr(all(test, feature = "socket_timeout"), feature(duration_span))]
+#![doc(html_root_url="https://doc.rust-lang.org/unix-socket/doc/v0.5.0")]
 
-extern crate debug_builders;
+#[macro_use]
+extern crate cfg_if;
 extern crate libc;
 
-use debug_builders::DebugStruct;
 use std::ascii;
+use std::cmp::Ordering;
 use std::convert::AsRef;
-use std::cmp::{self, Ordering};
 use std::ffi::OsStr;
+use std::fmt;
 use std::io;
-use std::net::Shutdown;
 use std::iter::IntoIterator;
 use std::mem;
-use std::os::unix::io::{RawFd, AsRawFd};
-use std::os::unix::ffi::OsStrExt;
-use std::fmt;
-use std::path::Path;
 use std::mem::size_of;
-
-extern "C" {
-    fn socketpair(domain: libc::c_int,
-                  ty: libc::c_int,
-                  proto: libc::c_int,
-                  sv: *mut [libc::c_int; 2])
-                  -> libc::c_int;
-
-    #[cfg(feature = "socket_timeout")]
-    fn getsockopt(socket: libc::c_int,
-                  level: libc::c_int,
-                  option_name: libc::c_int,
-                  option_value: *mut libc::c_void,
-                  option_len: *mut libc::c_void)
-                  -> libc::c_int;
-}
+use std::net::Shutdown;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::io::{RawFd, AsRawFd, FromRawFd, IntoRawFd};
+use std::path::Path;
+use std::time::Duration;
 
 fn sun_path_offset() -> usize {
     unsafe {
@@ -75,23 +59,19 @@ impl Drop for Inner {
 
 impl Inner {
     fn new(kind: libc::c_int) -> io::Result<Inner> {
-        unsafe {
-            cvt(libc::socket(libc::AF_UNIX, kind, 0)).map(Inner)
-        }
+        unsafe { cvt(libc::socket(libc::AF_UNIX, kind, 0)).map(Inner) }
     }
 
     fn new_pair(kind: libc::c_int) -> io::Result<(Inner, Inner)> {
         unsafe {
             let mut fds = [0, 0];
-            try!(cvt(socketpair(libc::AF_UNIX, kind, 0, &mut fds)));
+            try!(cvt(libc::socketpair(libc::AF_UNIX, kind, 0, fds.as_mut_ptr())));
             Ok((Inner(fds[0]), Inner(fds[1])))
         }
     }
 
     fn try_clone(&self) -> io::Result<Inner> {
-        unsafe {
-            cvt(libc::dup(self.0)).map(Inner)
-        }
+        unsafe { cvt(libc::dup(self.0)).map(Inner) }
     }
 
     fn shutdown(&self, how: Shutdown) -> io::Result<()> {
@@ -101,34 +81,29 @@ impl Inner {
             Shutdown::Both => libc::SHUT_RDWR,
         };
 
-        unsafe {
-            cvt(libc::shutdown(self.0, how)).map(|_| ())
-        }
+        unsafe { cvt(libc::shutdown(self.0, how)).map(|_| ()) }
     }
 
-    #[cfg(feature = "socket_timeout")]
-    fn timeout(&self, kind: libc::c_int) -> io::Result<Option<std::time::Duration>> {
+    fn timeout(&self, kind: libc::c_int) -> io::Result<Option<Duration>> {
         let timeout = unsafe {
             let mut timeout: libc::timeval = mem::zeroed();
             let mut size = mem::size_of::<libc::timeval>() as libc::socklen_t;
-            try!(cvt(getsockopt(self.0,
-                                libc::SOL_SOCKET,
-                                kind,
-                                &mut timeout as *mut _ as *mut _,
-                                &mut size as *mut _ as *mut _)));
+            try!(cvt(libc::getsockopt(self.0,
+                                      libc::SOL_SOCKET,
+                                      kind,
+                                      &mut timeout as *mut _ as *mut _,
+                                      &mut size as *mut _ as *mut _)));
             timeout
         };
 
         if timeout.tv_sec == 0 && timeout.tv_usec == 0 {
             Ok(None)
         } else {
-            Ok(Some(std::time::Duration::new(timeout.tv_sec as u64,
-                                             (timeout.tv_usec as u32) * 1000)))
+            Ok(Some(Duration::new(timeout.tv_sec as u64, (timeout.tv_usec as u32) * 1000)))
         }
     }
 
-    #[cfg(feature = "socket_timeout")]
-    fn set_timeout(&self, dur: Option<std::time::Duration>, kind: libc::c_int) -> io::Result<()> {
+    fn set_timeout(&self, dur: Option<Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeout = match dur {
             Some(dur) => {
                 if dur.as_secs() == 0 && dur.subsec_nanos() == 0 {
@@ -136,14 +111,15 @@ impl Inner {
                                               "cannot set a 0 duration timeout"));
                 }
 
-                let secs = if dur.as_secs() > libc::time_t::max_value() as u64 {
-                    libc::time_t::max_value()
+                let (secs, usecs) = if dur.as_secs() > libc::time_t::max_value() as u64 {
+                    (libc::time_t::max_value(), 999_999)
                 } else {
-                    dur.as_secs() as libc::time_t
+                    (dur.as_secs() as libc::time_t,
+                     (dur.subsec_nanos() / 1000) as libc::suseconds_t)
                 };
                 let mut timeout = libc::timeval {
                     tv_sec: secs,
-                    tv_usec: (dur.subsec_nanos() / 1000) as libc::suseconds_t,
+                    tv_usec: usecs,
                 };
                 if timeout.tv_sec == 0 && timeout.tv_usec == 0 {
                     timeout.tv_usec = 1;
@@ -167,10 +143,32 @@ impl Inner {
                 .map(|_| ())
         }
     }
+
+    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        let mut nonblocking = nonblocking as libc::c_ulong;
+        unsafe { cvt(libc::ioctl(self.0, libc::FIONBIO, &mut nonblocking)).map(|_| ()) }
+    }
+
+    fn take_error(&self) -> io::Result<Option<io::Error>> {
+        let mut errno: libc::c_int = 0;
+
+        unsafe {
+            try!(cvt(libc::getsockopt(self.0,
+                                      libc::SOL_SOCKET,
+                                      libc::SO_ERROR,
+                                      &mut errno as *mut _ as *mut _,
+                                      &mut mem::size_of_val(&errno) as *mut _ as *mut _)));
+        }
+
+        if errno == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(io::Error::from_raw_os_error(errno)))
+        }
+    }
 }
 
-unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
-        -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
+unsafe fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
     let mut addr: libc::sockaddr_un = mem::zeroed();
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
 
@@ -180,7 +178,7 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
         // Abstract paths don't need a null terminator
         (Some(&0), Ordering::Greater) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "path must be no longer than SUN_LEN"))
+                                      "path must be no longer than SUN_LEN"));
         }
         (_, Ordering::Greater) | (_, Ordering::Equal) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -191,47 +189,34 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P)
     for (dst, src) in addr.sun_path.iter_mut().zip(bytes.iter()) {
         *dst = *src as libc::c_char;
     }
-    // null byte for pathname addresses is already there because we zeroed the struct
+    // null byte for pathname addresses is already there because we zeroed the
+    // struct
 
     let mut len = sun_path_offset() + bytes.len();
     match bytes.get(0) {
         Some(&0) | None => {}
-        Some(_) => len += 1
+        Some(_) => len += 1,
     }
     Ok((addr, len as libc::socklen_t))
 }
 
-/// The kind of an address associated with a Unix socket.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AddressKind<'a> {
-    /// An unnamed address.
+enum AddressKind<'a> {
     Unnamed,
-    /// An address corresponding to a path on the filesystem.
     Pathname(&'a Path),
-    /// An address in an abstract namespace unrelated to the filesystem.
-    ///
-    /// Abstract addresses are a nonportable Linux extension.
     Abstract(&'a [u8]),
 }
 
 /// An address associated with a Unix socket.
+#[derive(Clone)]
 pub struct SocketAddr {
     addr: libc::sockaddr_un,
     len: libc::socklen_t,
 }
 
-impl Clone for SocketAddr {
-    fn clone(&self) -> SocketAddr {
-        SocketAddr {
-            addr: self.addr,
-            len: self.len,
-        }
-    }
-}
-
 impl SocketAddr {
     fn new<F>(f: F) -> io::Result<SocketAddr>
-            where F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int {
+        where F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int
+    {
         unsafe {
             let mut addr: libc::sockaddr_un = mem::zeroed();
             let mut len = mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
@@ -253,8 +238,25 @@ impl SocketAddr {
         }
     }
 
-    /// Returns the value of the address.
-    pub fn address<'a>(&'a self) -> AddressKind<'a> {
+    /// Returns true iff the address is unnamed.
+    pub fn is_unnamed(&self) -> bool {
+        if let AddressKind::Unnamed = self.address() {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns the contents of this address if it is a `pathname` address.
+    pub fn as_pathname(&self) -> Option<&Path> {
+        if let AddressKind::Pathname(path) = self.address() {
+            Some(path)
+        } else {
+            None
+        }
+    }
+
+    fn address<'a>(&'a self) -> AddressKind<'a> {
         let len = self.len as usize - sun_path_offset();
         let path = unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&self.addr.sun_path) };
 
@@ -274,7 +276,7 @@ impl fmt::Debug for SocketAddr {
         match self.address() {
             AddressKind::Unnamed => write!(fmt, "(unnamed)"),
             AddressKind::Abstract(name) => write!(fmt, "{} (abstract)", AsciiEscaped(name)),
-            AddressKind::Pathname(path) => write!(fmt, "{:?} (pathname)", path)
+            AddressKind::Pathname(path) => write!(fmt, "{:?} (pathname)", path),
         }
     }
 }
@@ -288,6 +290,32 @@ impl<'a> fmt::Display for AsciiEscaped<'a> {
             try!(write!(fmt, "{}", byte as char));
         }
         write!(fmt, "\"")
+    }
+}
+
+/// OS specific extension traits.
+pub mod os {
+    /// Linux specific extension traits.
+    #[cfg(target_os = "linux")]
+    pub mod linux {
+        use {AddressKind, SocketAddr};
+
+        /// Linux specific extensions for the `SocketAddr` type.
+        pub trait SocketAddrExt {
+            /// Returns the contents of this address (without the leading
+            /// null byte) if it is an `abstract` address.
+            fn as_abstract(&self) -> Option<&[u8]>;
+        }
+
+        impl SocketAddrExt for SocketAddr {
+            fn as_abstract(&self) -> Option<&[u8]> {
+                if let AddressKind::Abstract(path) = self.address() {
+                    Some(path)
+                } else {
+                    None
+                }
+            }
+        }
     }
 }
 
@@ -311,20 +339,20 @@ pub struct UnixStream {
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = DebugStruct::new(fmt, "UnixStream")
-            .field("fd", &self.inner.0);
+        let mut builder = fmt.debug_struct("UnixStream");
+        builder.field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
-            builder = builder.field("local", &addr);
+            builder.field("local", &addr);
         }
         if let Ok(addr) = self.peer_addr() {
-            builder = builder.field("peer", &addr);
+            builder.field("peer", &addr);
         }
         builder.finish()
     }
 }
 
 impl UnixStream {
-    /// Connect to the socket named by `path`.
+    /// Connects to the socket named by `path`.
     ///
     /// Linux provides, as a nonportable extension, a separate "abstract"
     /// address namespace as opposed to filesystem-based addressing. If `path`
@@ -340,14 +368,12 @@ impl UnixStream {
             if ret < 0 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(UnixStream {
-                    inner: inner,
-                })
+                Ok(UnixStream { inner: inner })
             }
         }
     }
 
-    /// Create an unnamed pair of connected sockets.
+    /// Creates an unnamed pair of connected sockets.
     ///
     /// Returns two `UnixStream`s which are connected to each other.
     pub fn pair() -> io::Result<(UnixStream, UnixStream)> {
@@ -355,23 +381,14 @@ impl UnixStream {
         Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
     }
 
-    /// # Deprecated
-    ///
-    /// Use `UnixStream::pair` instead.
-    pub fn unnamed() -> io::Result<(UnixStream, UnixStream)> {
-        UnixStream::pair()
-    }
-
-    /// Create a new independently owned handle to the underlying socket.
+    /// Creates a new independently owned handle to the underlying socket.
     ///
     /// The returned `UnixStream` is a reference to the same stream that this
     /// object references. Both handles will read and write the same stream of
     /// data, and options set on one stream will be propogated to the other
     /// stream.
     pub fn try_clone(&self) -> io::Result<UnixStream> {
-        Ok(UnixStream {
-            inner: try!(self.inner.try_clone())
-        })
+        Ok(UnixStream { inner: try!(self.inner.try_clone()) })
     }
 
     /// Returns the socket address of the local half of this connection.
@@ -389,10 +406,7 @@ impl UnixStream {
     /// If the provided value is `None`, then `read` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
 
@@ -401,30 +415,31 @@ impl UnixStream {
     /// If the provided value is `None`, then `write` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn set_write_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn read_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
 
-    /// Shut down the read, write, or both halves of this connection.
+    /// Moves the socket into or out of nonblocking mode.
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.inner.set_nonblocking(nonblocking)
+    }
+
+    /// Returns the value of the `SO_ERROR` option.
+    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
+        self.inner.take_error()
+    }
+
+    /// Shuts down the read, write, or both halves of this connection.
     ///
     /// This function will cause all pending and future I/O calls on the
     /// specified portions to immediately return with an appropriate value
@@ -432,10 +447,6 @@ impl UnixStream {
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         self.inner.shutdown(how)
     }
-}
-
-fn calc_len(buf: &[u8]) -> libc::size_t {
-    cmp::min(libc::size_t::max_value() as usize, buf.len()) as libc::size_t
 }
 
 impl io::Read for UnixStream {
@@ -447,7 +458,7 @@ impl io::Read for UnixStream {
 impl<'a> io::Read for &'a UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         unsafe {
-            cvt_s(libc::recv(self.inner.0, buf.as_mut_ptr() as *mut _, calc_len(buf), 0))
+            cvt_s(libc::recv(self.inner.0, buf.as_mut_ptr() as *mut _, buf.len(), 0))
                 .map(|r| r as usize)
         }
     }
@@ -466,7 +477,7 @@ impl io::Write for UnixStream {
 impl<'a> io::Write for &'a UnixStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
-            cvt_s(libc::send(self.inner.0, buf.as_ptr() as *const _, calc_len(buf), 0))
+            cvt_s(libc::send(self.inner.0, buf.as_ptr() as *const _, buf.len(), 0))
                 .map(|r| r as usize)
         }
     }
@@ -482,13 +493,17 @@ impl AsRawFd for UnixStream {
     }
 }
 
-#[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature (enabled by default).
-impl std::os::unix::io::FromRawFd for UnixStream {
+impl FromRawFd for UnixStream {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
-        UnixStream {
-            inner: Inner(fd)
-        }
+        UnixStream { inner: Inner(fd) }
+    }
+}
+
+impl IntoRawFd for UnixStream {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.inner.0;
+        mem::forget(self);
+        fd
     }
 }
 
@@ -529,18 +544,17 @@ pub struct UnixListener {
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = DebugStruct::new(fmt, "UnixListener")
-            .field("fd", &self.inner.0);
+        let mut builder = fmt.debug_struct("UnixListener");
+        builder.field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
-            builder = builder.field("local", &addr);
+            builder.field("local", &addr);
         }
         builder.finish()
     }
 }
 
 impl UnixListener {
-    /// Creates a new `UnixListener` which will be bound to the specified
-    /// socket.
+    /// Creates a new `UnixListener` bound to the specified socket.
     ///
     /// Linux provides, as a nonportable extension, a separate "abstract"
     /// address namespace as opposed to filesystem-based addressing. If `path`
@@ -555,43 +569,57 @@ impl UnixListener {
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
             try!(cvt(libc::listen(inner.0, 128)));
 
-            Ok(UnixListener {
-                inner: inner,
-            })
+            Ok(UnixListener { inner: inner })
         }
     }
 
     /// Accepts a new incoming connection to this listener.
-    pub fn accept(&self) -> io::Result<UnixStream> {
+    ///
+    /// This function will block the calling thread until a new Unix connection
+    /// is established. When established, the corersponding `UnixStream` and
+    /// the remote peer's address will be returned.
+    pub fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
         unsafe {
-            cvt(libc::accept(self.inner.0, 0 as *mut _, 0 as *mut _))
-                .map(|fd| UnixStream { inner: Inner(fd) })
+            let mut fd = 0;
+            let addr = try!(SocketAddr::new(|addr, len| {
+                fd = libc::accept(self.inner.0, addr, len);
+                fd
+            }));
+
+            Ok((UnixStream { inner: Inner(fd) }, addr))
         }
     }
 
-    /// Create a new independently owned handle to the underlying socket.
+    /// Creates a new independently owned handle to the underlying socket.
     ///
     /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
     pub fn try_clone(&self) -> io::Result<UnixListener> {
-        Ok(UnixListener {
-            inner: try!(self.inner.try_clone())
-        })
+        Ok(UnixListener { inner: try!(self.inner.try_clone()) })
     }
 
-    /// Returns the socket address of the local half of this connection.
+    /// Returns the local socket address of this listener.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
     }
 
+    /// Moves the socket into or out of nonblocking mode.
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.inner.set_nonblocking(nonblocking)
+    }
+
+    /// Returns the value of the `SO_ERROR` option.
+    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
+        self.inner.take_error()
+    }
+
     /// Returns an iterator over incoming connections.
     ///
-    /// The iterator will never return `None`.
+    /// The iterator will never return `None` and will also not yield the
+    /// peer's `SocketAddr` structure.
     pub fn incoming<'a>(&'a self) -> Incoming<'a> {
-        Incoming {
-            listener: self
-        }
+        Incoming { listener: self }
     }
 }
 
@@ -601,13 +629,17 @@ impl AsRawFd for UnixListener {
     }
 }
 
-#[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature (enabled by default).
-impl std::os::unix::io::FromRawFd for UnixListener {
+impl FromRawFd for UnixListener {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
-        UnixListener {
-            inner: Inner(fd)
-        }
+        UnixListener { inner: Inner(fd) }
+    }
+}
+
+impl IntoRawFd for UnixListener {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.inner.0;
+        mem::forget(self);
+        fd
     }
 }
 
@@ -632,7 +664,7 @@ impl<'a> Iterator for Incoming<'a> {
     type Item = io::Result<UnixStream>;
 
     fn next(&mut self) -> Option<io::Result<UnixStream>> {
-        Some(self.listener.accept())
+        Some(self.listener.accept().map(|s| s.0))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -659,13 +691,13 @@ pub struct UnixDatagram {
 
 impl fmt::Debug for UnixDatagram {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = DebugStruct::new(fmt, "UnixDatagram")
-            .field("fd", &self.inner.0);
+        let mut builder = fmt.debug_struct("UnixDatagram");
+        builder.field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
-            builder = builder.field("local", &addr);
+            builder.field("local", &addr);
         }
         if let Ok(addr) = self.peer_addr() {
-            builder = builder.field("peer", &addr);
+            builder.field("peer", &addr);
         }
         builder.finish()
     }
@@ -686,18 +718,14 @@ impl UnixDatagram {
 
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
 
-            Ok(UnixDatagram {
-                inner: inner,
-            })
+            Ok(UnixDatagram { inner: inner })
         }
     }
 
     /// Creates a Unix Datagram socket which is not bound to any address.
     pub fn unbound() -> io::Result<UnixDatagram> {
         let inner = try!(Inner::new(libc::SOCK_DGRAM));
-        Ok(UnixDatagram {
-            inner: inner,
-        })
+        Ok(UnixDatagram { inner: inner })
     }
 
     /// Create an unnamed pair of connected sockets.
@@ -708,13 +736,11 @@ impl UnixDatagram {
         Ok((UnixDatagram { inner: i1 }, UnixDatagram { inner: i2 }))
     }
 
-    /// Connect the socket to the specified address.
+    /// Connects the socket to the specified address.
     ///
     /// The `send` method may be used to send data to the specified address.
     /// `recv` and `recv_from` will only receive data from that address.
-    pub fn connect<P: AsRef<Path>>(&self, path: P)
-        -> io::Result<()>
-    {
+    pub fn connect<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
         unsafe {
             let (addr, len) = try!(sockaddr_un(path));
 
@@ -746,11 +772,17 @@ impl UnixDatagram {
             unsafe {
                 count = libc::recvfrom(self.inner.0,
                                        buf.as_mut_ptr() as *mut _,
-                                       calc_len(buf),
+                                       buf.len(),
                                        0,
                                        addr,
                                        len);
-                if count > 0 { 1 } else if count == 0 { 0 } else { -1 }
+                if count > 0 {
+                    1
+                } else if count == 0 {
+                    0
+                } else {
+                    -1
+                }
             }
         }));
 
@@ -764,7 +796,7 @@ impl UnixDatagram {
         unsafe {
             let count = try!(cvt_s(libc::recv(self.inner.0,
                                               buf.as_mut_ptr() as *mut _,
-                                              calc_len(buf),
+                                              buf.len(),
                                               0)));
             Ok(count as usize)
         }
@@ -779,7 +811,7 @@ impl UnixDatagram {
 
             let count = try!(cvt_s(libc::sendto(self.inner.0,
                                                 buf.as_ptr() as *const _,
-                                                calc_len(buf),
+                                                buf.len(),
                                                 0,
                                                 &addr as *const _ as *const _,
                                                 len)));
@@ -796,9 +828,9 @@ impl UnixDatagram {
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
             let count = try!(cvt_s(libc::send(self.inner.0,
-                                                buf.as_ptr() as *const _,
-                                                calc_len(buf),
-                                                0)));
+                                              buf.as_ptr() as *const _,
+                                              buf.len(),
+                                              0)));
             Ok(count as usize)
         }
     }
@@ -808,10 +840,7 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `recv` and `recv_from` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
 
@@ -820,27 +849,28 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `send` and `send_to` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn set_write_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn read_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
-    ///
-    /// Requires the `socket_timeout` feature.
-    #[cfg(feature = "socket_timeout")]
-    pub fn write_timeout(&self) -> io::Result<Option<std::time::Duration>> {
+    pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
+    }
+
+    /// Moves the socket into or out of nonblocking mode.
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.inner.set_nonblocking(nonblocking)
+    }
+
+    /// Returns the value of the `SO_ERROR` option.
+    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
+        self.inner.take_error()
     }
 
     /// Shut down the read, write, or both halves of this connection.
@@ -859,13 +889,17 @@ impl AsRawFd for UnixDatagram {
     }
 }
 
-#[cfg(feature = "from_raw_fd")]
-/// Requires the `from_raw_fd` feature (enabled by default).
-impl std::os::unix::io::FromRawFd for UnixDatagram {
+impl FromRawFd for UnixDatagram {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
-        UnixDatagram {
-            inner: Inner(fd)
-        }
+        UnixDatagram { inner: Inner(fd) }
+    }
+}
+
+impl IntoRawFd for UnixDatagram {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.inner.0;
+        mem::forget(self);
+        fd
     }
 }
 
@@ -876,9 +910,10 @@ mod test {
     use std::thread;
     use std::io;
     use std::io::prelude::*;
+    use std::time::Duration;
     use self::tempdir::TempDir;
 
-    use {UnixListener, UnixStream, UnixDatagram, AddressKind};
+    use super::*;
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -898,7 +933,7 @@ mod test {
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
-            let mut stream = or_panic!(listener.accept());
+            let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
             assert_eq!(&msg1[..], &buf[..]);
@@ -906,6 +941,8 @@ mod test {
         });
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        assert_eq!(Some(&*socket_path),
+                   stream.peer_addr().unwrap().as_pathname());
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
@@ -939,15 +976,17 @@ mod test {
     }
 
     #[test]
-    #[cfg_attr(not(target_os = "linux"), ignore)]
+    #[cfg(target_os = "linux")]
     fn abstract_address() {
+        use os::linux::SocketAddrExt;
+
         let socket_path = "\0the path";
         let msg1 = b"hello";
         let msg2 = b"world!";
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
-            let mut stream = or_panic!(listener.accept());
+            let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
             assert_eq!(&msg1[..], &buf[..]);
@@ -955,6 +994,8 @@ mod test {
         });
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        assert_eq!(Some(&b"the path"[..]),
+                   stream.peer_addr().unwrap().as_abstract());
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
         or_panic!(stream.read_to_end(&mut buf));
@@ -973,7 +1014,7 @@ mod test {
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
-            let mut stream = or_panic!(listener.accept());
+            let mut stream = or_panic!(listener.accept()).0;
             or_panic!(stream.write_all(msg1));
             or_panic!(stream.write_all(msg2));
         });
@@ -1015,8 +1056,9 @@ mod test {
     #[test]
     fn long_path() {
         let dir = or_panic!(TempDir::new("unix_socket"));
-        let socket_path = dir.path().join("asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasd\
-                                           fasdfasasdfasdfasdasdfasdfasdfadfasdfasdfasdfasdfasdf");
+        let socket_path = dir.path()
+                             .join("asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfa\
+                                    sasdfasdfasdasdfasdfasdfadfasdfasdfasdfasdfasdf");
         match UnixStream::connect(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
             Err(e) => panic!("unexpected error {}", e),
@@ -1037,10 +1079,7 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "socket_timeout")]
     fn timeouts() {
-        use std::time::Duration;
-
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
@@ -1067,10 +1106,7 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "socket_timeout")]
     fn test_read_timeout() {
-        use std::time::Duration;
-
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
@@ -1080,19 +1116,12 @@ mod test {
         or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
 
         let mut buf = [0; 10];
-        let wait = Duration::span(|| {
-            let kind = stream.read(&mut buf).err().expect("expected error").kind();
-            assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
-        });
-        assert!(wait > Duration::from_millis(400));
-        assert!(wait < Duration::from_millis(1600));
+        let kind = stream.read(&mut buf).err().expect("expected error").kind();
+        assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
     }
 
     #[test]
-    #[cfg(feature = "socket_timeout")]
     fn test_read_with_timeout() {
-        use std::time::Duration;
-
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
@@ -1101,19 +1130,15 @@ mod test {
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
         or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
 
-        let mut other_end = or_panic!(listener.accept());
+        let mut other_end = or_panic!(listener.accept()).0;
         or_panic!(other_end.write_all(b"hello world"));
 
         let mut buf = [0; 11];
         or_panic!(stream.read(&mut buf));
         assert_eq!(b"hello world", &buf[..]);
 
-        let wait = Duration::span(|| {
-            let kind = stream.read(&mut buf).err().expect("expected error").kind();
-            assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
-        });
-        assert!(wait > Duration::from_millis(400));
-        assert!(wait < Duration::from_millis(1600));
+        let kind = stream.read(&mut buf).err().expect("expected error").kind();
+        assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
     }
 
     #[test]
@@ -1145,7 +1170,7 @@ mod test {
         let mut buf = [0; 11];
         let (usize, addr) = or_panic!(sock1.recv_from(&mut buf));
         assert_eq!(usize, 11);
-        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert!(addr.is_unnamed());
         assert_eq!(msg, &buf[..]);
     }
 
@@ -1166,7 +1191,7 @@ mod test {
         let mut buf = [0; 11];
         let (usize, addr) = or_panic!(bsock1.recv_from(&mut buf));
         assert_eq!(usize, 11);
-        assert_eq!(addr.address(), AddressKind::Unnamed);
+        assert!(addr.is_unnamed());
         assert_eq!(msg, &buf[..]);
 
         // Changing default socket works too
