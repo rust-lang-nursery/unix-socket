@@ -748,6 +748,15 @@ impl UnixDatagram {
         }
     }
 
+    /// Creates a new independently owned handle to the underlying socket.
+    ///
+    /// The returned `UnixListener` is a reference to the same socket that this
+    /// object references. Both handles can be used to accept incoming
+    /// connections and options set on one listener will affect the other.
+    pub fn try_clone(&self) -> io::Result<UnixDatagram> {
+        Ok(UnixDatagram { inner: try!(self.inner.try_clone()) })
+    }
+
     /// Returns the address of this socket.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
@@ -910,6 +919,7 @@ mod test {
     use std::io::prelude::*;
     use std::time::Duration;
     use self::tempdir::TempDir;
+    use std::net::Shutdown;
 
     use super::*;
 
@@ -1234,6 +1244,22 @@ mod test {
         or_panic!(s2.recv(&mut buf));
         assert_eq!(&msg2[..], &buf[..]);
         drop(s2);
+
+        thread.join().unwrap();
+    }
+
+    #[test]
+    fn datagram_shutdown() {
+        let s1 = UnixDatagram::unbound().unwrap();
+        let s2 = s1.try_clone().unwrap();
+
+        let thread = thread::spawn(move || {
+            let mut buf = [0; 1];
+            assert_eq!(0, s1.recv_from(&mut buf).unwrap().0);
+        });
+
+        thread::sleep(Duration::from_millis(100));
+        s2.shutdown(Shutdown::Read).unwrap();;
 
         thread.join().unwrap();
     }
