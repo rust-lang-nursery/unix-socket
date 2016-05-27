@@ -692,13 +692,13 @@ impl<'a> Iterator for IncomingSeqpacket<'a> {
 ///
 /// ```rust,no_run
 /// use std::thread;
-/// use unix_socket::{UnixStream, UnixStreamListener};
+/// use unix_socket::{UnixStream, UnixListener};
 ///
 /// fn handle_client(_stream: UnixStream) {
 ///     // ...
 /// }
 ///
-/// let listener = UnixStreamListener::bind("/path/to/the/socket").unwrap();
+/// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
 ///
 /// // accept connections and process them, spawning a new thread for each one
 /// for stream in listener.incoming() {
@@ -717,13 +717,13 @@ impl<'a> Iterator for IncomingSeqpacket<'a> {
 /// // close the listener socket
 /// drop(listener);
 /// ```
-pub struct UnixStreamListener {
+pub struct UnixListener {
     inner: Inner,
 }
 
-impl fmt::Debug for UnixStreamListener {
+impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = fmt.debug_struct("UnixStreamListener");
+        let mut builder = fmt.debug_struct("UnixListener");
         builder.field("fd", &self.inner.0);
         if let Ok(addr) = self.local_addr() {
             builder.field("local", &addr);
@@ -732,15 +732,15 @@ impl fmt::Debug for UnixStreamListener {
     }
 }
 
-impl UnixStreamListener {
-    /// Creates a new `UnixStreamListener` bound to the specified socket.
+impl UnixListener {
+    /// Creates a new `UnixListener` bound to the specified socket.
     ///
     /// Linux provides, as a nonportable extension, a separate "abstract"
     /// address namespace as opposed to filesystem-based addressing. If `path`
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
-    pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixStreamListener> {
+    pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_STREAM));
             let (addr, len) = try!(sockaddr_un(path));
@@ -748,7 +748,7 @@ impl UnixStreamListener {
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
             try!(cvt(libc::listen(inner.0, 128)));
 
-            Ok(UnixStreamListener { inner: inner })
+            Ok(UnixListener { inner: inner })
         }
     }
 
@@ -771,11 +771,11 @@ impl UnixStreamListener {
 
     /// Creates a new independently owned handle to the underlying socket.
     ///
-    /// The returned `UnixStreamListener` is a reference to the same socket that this
+    /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
-    pub fn try_clone(&self) -> io::Result<UnixStreamListener> {
-        Ok(UnixStreamListener { inner: try!(self.inner.try_clone()) })
+    pub fn try_clone(&self) -> io::Result<UnixListener> {
+        Ok(UnixListener { inner: try!(self.inner.try_clone()) })
     }
 
     /// Returns the local socket address of this listener.
@@ -802,19 +802,19 @@ impl UnixStreamListener {
     }
 }
 
-impl AsRawFd for UnixStreamListener {
+impl AsRawFd for UnixListener {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.0
     }
 }
 
-impl FromRawFd for UnixStreamListener {
-    unsafe fn from_raw_fd(fd: RawFd) -> UnixStreamListener {
-        UnixStreamListener { inner: Inner(fd) }
+impl FromRawFd for UnixListener {
+    unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
+        UnixListener { inner: Inner(fd) }
     }
 }
 
-impl IntoRawFd for UnixStreamListener {
+impl IntoRawFd for UnixListener {
     fn into_raw_fd(self) -> RawFd {
         let fd = self.inner.0;
         mem::forget(self);
@@ -822,7 +822,7 @@ impl IntoRawFd for UnixStreamListener {
     }
 }
 
-impl<'a> IntoIterator for &'a UnixStreamListener {
+impl<'a> IntoIterator for &'a UnixListener {
     type Item = io::Result<UnixStream>;
     type IntoIter = IncomingStream<'a>;
 
@@ -831,12 +831,12 @@ impl<'a> IntoIterator for &'a UnixStreamListener {
     }
 }
 
-/// An iterator over incoming connections to a `UnixStreamListener`.
+/// An iterator over incoming connections to a `UnixListener`.
 ///
 /// It will never return `None`.
 #[derive(Debug)]
 pub struct IncomingStream<'a> {
-    listener: &'a UnixStreamListener,
+    listener: &'a UnixListener,
 }
 
 impl<'a> Iterator for IncomingStream<'a> {
@@ -931,7 +931,7 @@ impl UnixDatagram {
 
     /// Creates a new independently owned handle to the underlying socket.
     ///
-    /// The returned `UnixStreamListener` is a reference to the same socket that this
+    /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
     pub fn try_clone(&self) -> io::Result<UnixDatagram> {
@@ -1146,7 +1146,7 @@ impl UnixSeqpacket {
 
     /// Creates a new independently owned handle to the underlying socket.
     ///
-    /// The returned `UnixStreamListener` is a reference to the same socket that this
+    /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
     pub fn try_clone(&self) -> io::Result<UnixSeqpacket> {
@@ -1279,7 +1279,7 @@ mod test {
         let msg1 = b"hello";
         let msg2 = b"world!";
 
-        let listener = or_panic!(UnixStreamListener::bind(&socket_path));
+        let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
             let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
@@ -1365,7 +1365,7 @@ mod test {
         let msg1 = b"hello";
         let msg2 = b"world!";
 
-        let listener = or_panic!(UnixStreamListener::bind(&socket_path));
+        let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
             let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
@@ -1393,7 +1393,7 @@ mod test {
         let msg1 = b"hello";
         let msg2 = b"world";
 
-        let listener = or_panic!(UnixStreamListener::bind(&socket_path));
+        let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
             let mut stream = or_panic!(listener.accept()).0;
             or_panic!(stream.write_all(msg1));
@@ -1417,7 +1417,7 @@ mod test {
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
-        let listener = or_panic!(UnixStreamListener::bind(&socket_path));
+        let listener = or_panic!(UnixListener::bind(&socket_path));
         let thread = thread::spawn(move || {
             for stream in listener.incoming().take(2) {
                 let mut stream = or_panic!(stream);
@@ -1446,7 +1446,7 @@ mod test {
             Ok(_) => panic!("unexpected success"),
         }
 
-        match UnixStreamListener::bind(&socket_path) {
+        match UnixListener::bind(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
             Err(e) => panic!("unexpected error {}", e),
             Ok(_) => panic!("unexpected success"),
@@ -1464,7 +1464,7 @@ mod test {
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
-        let _listener = or_panic!(UnixStreamListener::bind(&socket_path));
+        let _listener = or_panic!(UnixListener::bind(&socket_path));
 
         let stream = or_panic!(UnixStream::connect(&socket_path));
         let dur = Duration::new(15410, 0);
@@ -1491,7 +1491,7 @@ mod test {
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
-        let _listener = or_panic!(UnixStreamListener::bind(&socket_path));
+        let _listener = or_panic!(UnixListener::bind(&socket_path));
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
         or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
@@ -1506,7 +1506,7 @@ mod test {
         let dir = or_panic!(TempDir::new("unix_socket"));
         let socket_path = dir.path().join("sock");
 
-        let listener = or_panic!(UnixStreamListener::bind(&socket_path));
+        let listener = or_panic!(UnixListener::bind(&socket_path));
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
         or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
