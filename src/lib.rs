@@ -357,6 +357,14 @@ impl UnixStream {
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// ```
     pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixStream> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_STREAM));
@@ -374,6 +382,14 @@ impl UnixStream {
     /// Creates an unnamed pair of connected sockets.
     ///
     /// Returns two `UnixStream`s which are connected to each other.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let (stream1, stream2) = UnixStream::pair().unwrap();
+    /// ```
     pub fn pair() -> io::Result<(UnixStream, UnixStream)> {
         let (i1, i2) = try!(Inner::new_pair(libc::SOCK_STREAM));
         Ok((UnixStream { inner: i1 }, UnixStream { inner: i2 }))
@@ -385,16 +401,49 @@ impl UnixStream {
     /// object references. Both handles will read and write the same stream of
     /// data, and options set on one stream will be propogated to the other
     /// stream.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// let copy = stream.try_clone().unwrap();
+    /// ```
     pub fn try_clone(&self) -> io::Result<UnixStream> {
         Ok(UnixStream { inner: try!(self.inner.try_clone()) })
     }
 
     /// Returns the socket address of the local half of this connection.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// println!("{}", match stream.local_addr() {
+    ///     Ok(addr) => format!("local address: {:?}", addr),
+    ///     Err(_) => "no local address".to_owned(),
+    /// });
+    /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
     }
 
     /// Returns the socket address of the remote half of this connection.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// println!("{}", match stream.peer_addr() {
+    ///     Ok(addr) => format!("peer address: {:?}", addr),
+    ///     Err(_) => "no peer address".to_owned(),
+    /// });
+    /// ```
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getpeername(self.inner.0, addr, len) })
     }
@@ -404,6 +453,16 @@ impl UnixStream {
     /// If the provided value is `None`, then `read` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    /// use std::time::Duration;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// stream.set_read_timeout(Some(Duration::from_millis(1500))).unwrap();
+    /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
@@ -413,26 +472,81 @@ impl UnixStream {
     /// If the provided value is `None`, then `write` calls will block
     /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    /// use std::time::Duration;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// stream.set_write_timeout(Some(Duration::from_millis(1500))).unwrap();
+    /// ```
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// println!("{}", match stream.read_timeout() {
+    ///     Ok(timeout) => format!("read timeout: {:?}", timeout),
+    ///     Err(_) => "error".to_owned(),
+    /// });
+    /// ```
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// println!("{}", match stream.write_timeout() {
+    ///     Ok(timeout) => format!("write timeout: {:?}", timeout),
+    ///     Err(_) => "error".to_owned(),
+    /// });
+    /// ```
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
 
     /// Moves the socket into or out of nonblocking mode.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// stream.set_nonblocking(true).unwrap();
+    /// ```
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.inner.set_nonblocking(nonblocking)
     }
 
     /// Returns the value of the `SO_ERROR` option.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// println!("{}", match stream.take_error() {
+    ///     Ok(ret) => format!("error: {:?}", ret),
+    ///     Err(_) => "error".to_owned(),
+    /// });
+    /// ```
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.inner.take_error()
     }
@@ -442,6 +556,16 @@ impl UnixStream {
     /// This function will cause all pending and future I/O calls on the
     /// specified portions to immediately return with an appropriate value
     /// (see the documentation of `Shutdown`).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use std::net::Shutdown;
+    /// use unix_socket::UnixStream;
+    ///
+    /// let stream = UnixStream::connect("/path/to/my/socket").unwrap();
+    /// stream.shutdown(Shutdown::Both).unwrap();
+    /// ```
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         self.inner.shutdown(how)
     }
@@ -559,6 +683,14 @@ impl UnixListener {
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixListener;
+    ///
+    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    /// ```
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_STREAM));
@@ -576,6 +708,15 @@ impl UnixListener {
     /// This function will block the calling thread until a new Unix connection
     /// is established. When established, the corersponding `UnixStream` and
     /// the remote peer's address will be returned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixListener;
+    ///
+    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    /// let (client_stream, addr) = listener.accept().unwrap();
+    /// ```
     pub fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
         unsafe {
             let mut fd = 0;
@@ -593,21 +734,63 @@ impl UnixListener {
     /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixListener;
+    ///
+    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    /// let copy = listener.try_clone().unwrap();
+    /// ```
     pub fn try_clone(&self) -> io::Result<UnixListener> {
         Ok(UnixListener { inner: try!(self.inner.try_clone()) })
     }
 
     /// Returns the local socket address of this listener.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixListener;
+    ///
+    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    /// println!("{}", match listener.local_addr() {
+    ///     Ok(addr) => format!("local address: {:?}", addr),
+    ///     Err(_) => "no local address".to_owned(),
+    /// });
+    /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
     }
 
     /// Moves the socket into or out of nonblocking mode.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixListener;
+    ///
+    /// let mut listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    /// listener.set_nonblocking(true).unwrap();
+    /// ```
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.inner.set_nonblocking(nonblocking)
     }
 
     /// Returns the value of the `SO_ERROR` option.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixListener;
+    ///
+    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    /// println!("{}", match listener.take_error() {
+    ///     Ok(ret) => format!("error: {:?}", ret),
+    ///     Err(_) => "error".to_owned(),
+    /// });
+    /// ```
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.inner.take_error()
     }
@@ -616,6 +799,34 @@ impl UnixListener {
     ///
     /// The iterator will never return `None` and will also not yield the
     /// peer's `SocketAddr` structure.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use std::thread;
+    /// use unix_socket::{UnixStream, UnixListener};
+    ///
+    /// fn handle_client(stream: UnixStream) {
+    ///     // ...
+    /// }
+    ///
+    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    ///
+    /// // accept connections and process them, spawning a new thread for each one
+    /// for stream in listener.incoming() {
+    ///     match stream {
+    ///         Ok(stream) => {
+    ///             /* connection succeeded */
+    ///             println!("incoming connection succeeded!");
+    ///             thread::spawn(|| handle_client(stream));
+    ///         }
+    ///         Err(err) => {
+    ///             /* connection failed */
+    ///             println!("incoming connection failed...");
+    ///         }
+    ///     }
+    /// }
+    /// ```
     pub fn incoming<'a>(&'a self) -> Incoming<'a> {
         Incoming { listener: self }
     }
@@ -681,7 +892,7 @@ impl<'a> Iterator for Incoming<'a> {
 /// socket.send_to(b"hello world", "/path/to/other/socket").unwrap();
 /// let mut buf = [0; 100];
 /// let (count, address) = socket.recv_from(&mut buf).unwrap();
-/// println!("socket {:?} sent {:?}", address, &buf[..count]);
+/// println!("socket {:?} sent us {:?}", address, &buf[..count]);
 /// ```
 pub struct UnixDatagram {
     inner: Inner,
@@ -709,6 +920,14 @@ impl UnixDatagram {
     /// begins with a null byte, it will be interpreted as an "abstract"
     /// address. Otherwise, it will be interpreted as a "pathname" address,
     /// corresponding to a path on the filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// ```
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
@@ -721,6 +940,14 @@ impl UnixDatagram {
     }
 
     /// Creates a Unix Datagram socket which is not bound to any address.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::unbound().unwrap();
+    /// ```
     pub fn unbound() -> io::Result<UnixDatagram> {
         let inner = try!(Inner::new(libc::SOCK_DGRAM));
         Ok(UnixDatagram { inner: inner })
@@ -729,6 +956,14 @@ impl UnixDatagram {
     /// Create an unnamed pair of connected sockets.
     ///
     /// Returns two `UnixDatagrams`s which are connected to each other.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let (socket1, socket2) = UnixDatagram::pair().unwrap();
+    /// ```
     pub fn pair() -> io::Result<(UnixDatagram, UnixDatagram)> {
         let (i1, i2) = try!(Inner::new_pair(libc::SOCK_DGRAM));
         Ok((UnixDatagram { inner: i1 }, UnixDatagram { inner: i2 }))
@@ -738,6 +973,15 @@ impl UnixDatagram {
     ///
     /// The `send` method may be used to send data to the specified address.
     /// `recv` and `recv_from` will only receive data from that address.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// socket.connect("/path/to/other/socket").unwrap();
+    /// ```
     pub fn connect<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
         unsafe {
             let (addr, len) = try!(sockaddr_un(path));
@@ -753,11 +997,32 @@ impl UnixDatagram {
     /// The returned `UnixListener` is a reference to the same socket that this
     /// object references. Both handles can be used to accept incoming
     /// connections and options set on one listener will affect the other.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::unbound().unwrap();
+    /// let copy = socket.try_clone().unwrap();
+    /// ```
     pub fn try_clone(&self) -> io::Result<UnixDatagram> {
         Ok(UnixDatagram { inner: try!(self.inner.try_clone()) })
     }
 
     /// Returns the address of this socket.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/the/socket").unwrap();
+    /// println!("{}", match socket.local_addr() {
+    ///     Ok(addr) => format!("local address: {:?}", addr),
+    ///     Err(_) => "no local address".to_owned(),
+    /// });
+    /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.inner.0, addr, len) })
     }
@@ -765,6 +1030,18 @@ impl UnixDatagram {
     /// Returns the address of this socket's peer.
     ///
     /// The `connect` method will connect the socket to a peer.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/the/socket").unwrap();
+    /// println!("{}", match socket.peer_addr() {
+    ///     Ok(addr) => format!("peer address: {:?}", addr),
+    ///     Err(_) => "no peer address".to_owned(),
+    /// });
+    /// ```
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         SocketAddr::new(|addr, len| unsafe { libc::getpeername(self.inner.0, addr, len) })
     }
@@ -773,6 +1050,17 @@ impl UnixDatagram {
     ///
     /// On success, returns the number of bytes read and the address from
     /// whence the data came.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// let mut buf = [0; 100];
+    /// let (count, address) = socket.recv_from(&mut buf).unwrap();
+    /// println!("socket {:?} sent us {:?}", address, &buf[..count]);
+    /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let mut count = 0;
         let addr = try!(SocketAddr::new(|addr, len| {
@@ -799,6 +1087,18 @@ impl UnixDatagram {
     /// Receives data from the socket.
     ///
     /// On success, returns the number of bytes read.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// socket.connect("/path/to/other/socket").unwrap();
+    /// let mut buf = [0; 100];
+    /// let count = socket.recv(&mut buf).unwrap();
+    /// println!("we received {:?}", &buf[..count]);
+    /// ```
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         unsafe {
             let count = try!(cvt_s(libc::recv(self.inner.0,
@@ -812,6 +1112,26 @@ impl UnixDatagram {
     /// Sends data on the socket to the specified address.
     ///
     /// On success, returns the number of bytes written.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    ///
+    /// let mut data = b"hello world";
+    /// let mut sent = 0;
+    /// while sent < data.len() {
+    ///     match socket.send_to(&data[sent..(data.len() - sent)], "/path/to/other/socket") {
+    ///         Ok(data_sent) => { sent += data_sent; }
+    ///         Err(_) => {
+    ///             println!("an error occured while sending data...");
+    ///             break;
+    ///         }
+    ///     }
+    /// }
+    /// ```
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
         unsafe {
             let (addr, len) = try!(sockaddr_un(path));
@@ -832,6 +1152,27 @@ impl UnixDatagram {
     /// will return an error if the socket has not already been connected.
     ///
     /// On success, returns the number of bytes written.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// socket.connect("/path/to/other/socket").unwrap();
+    ///
+    /// let mut data = b"hello world";
+    /// let mut sent = 0;
+    /// while sent < data.len() {
+    ///     match socket.send(&data[sent..(data.len() - sent)]) {
+    ///         Ok(data_sent) => { sent += data_sent; }
+    ///         Err(_) => {
+    ///             println!("an error occured while sending data...");
+    ///             break;
+    ///         }
+    ///     }
+    /// }
+    /// ```
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         unsafe {
             let count = try!(cvt_s(libc::send(self.inner.0,
@@ -847,6 +1188,16 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `recv` and `recv_from` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    /// use std::time::Duration;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// socket.set_read_timeout(Some(Duration::from_millis(1500))).unwrap();
+    /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
@@ -856,26 +1207,81 @@ impl UnixDatagram {
     /// If the provided value is `None`, then `send` and `send_to` calls will
     /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    /// use std::time::Duration;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// socket.set_write_timeout(Some(Duration::from_millis(1500))).unwrap();
+    /// ```
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.inner.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
     /// Returns the read timeout of this socket.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// println!("{}", match socket.read_timeout() {
+    ///     Ok(timeout) => format!("read timeout: {:?}", timeout),
+    ///     Err(_) => "error".to_owned(),
+    /// });
+    /// ```
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_RCVTIMEO)
     }
 
     /// Returns the write timeout of this socket.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// println!("{}", match socket.write_timeout() {
+    ///     Ok(timeout) => format!("write timeout: {:?}", timeout),
+    ///     Err(_) => "error".to_owned(),
+    /// });
+    /// ```
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.inner.timeout(libc::SO_SNDTIMEO)
     }
 
     /// Moves the socket into or out of nonblocking mode.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// socket.set_nonblocking(true).unwrap();
+    /// ```
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         self.inner.set_nonblocking(nonblocking)
     }
 
     /// Returns the value of the `SO_ERROR` option.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/the/socket").unwrap();
+    /// println!("{}", match socket.take_error() {
+    ///     Ok(ret) => format!("error: {:?}", ret),
+    ///     Err(_) => "error".to_owned(),
+    /// });
+    /// ```
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.inner.take_error()
     }
@@ -885,6 +1291,17 @@ impl UnixDatagram {
     /// This function will cause all pending and future I/O calls on the
     /// specified portions to immediately return with an appropriate value
     /// (see the documentation of `Shutdown`).
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use std::net::Shutdown;
+    /// use unix_socket::UnixDatagram;
+    ///
+    /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
+    /// socket.connect("/path/to/other/socket").unwrap();
+    /// socket.shutdown(Shutdown::Both).unwrap();
+    /// ```
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         self.inner.shutdown(how)
     }
