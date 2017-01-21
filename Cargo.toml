@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["posix", "unix", "socket", "domain"]
 
 [dependencies]
-libc = "0.2.1"
+libc = "0.2.20"
 
 [dev-dependencies]
 tempdir = "0.3"
