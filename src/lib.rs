@@ -12,7 +12,6 @@ use std::fmt;
 use std::io;
 use std::iter::IntoIterator;
 use std::mem;
-use std::mem::size_of;
 use std::net::Shutdown;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{RawFd, AsRawFd, FromRawFd, IntoRawFd};
@@ -178,6 +177,7 @@ unsafe fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un,
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "path must be no longer than SUN_LEN"));
         }
+        (Some(&0), _) => {},
         (_, Ordering::Greater) | (_, Ordering::Equal) => {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "path must be shorter than SUN_LEN"));
@@ -1420,6 +1420,44 @@ mod test {
 
         let mut stream = or_panic!(UnixStream::connect(&socket_path));
         assert_eq!(Some(&b"the path"[..]),
+                   stream.peer_addr().unwrap().as_abstract());
+        or_panic!(stream.write_all(msg1));
+        let mut buf = vec![];
+        or_panic!(stream.read_to_end(&mut buf));
+        assert_eq!(&msg2[..], &buf[..]);
+        drop(stream);
+
+        thread.join().unwrap();
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn abstract_address_max_len() {
+        use os::linux::SocketAddrExt;
+
+        let len = unsafe {
+            let addr: libc::sockaddr_un = mem::zeroed();
+            addr.sun_path.len()
+        };
+
+        let mut socket_path = vec![0; len];
+        socket_path[1..9].copy_from_slice(b"the path");
+        let socket_path: &OsStr = OsStr::from_bytes(&socket_path).into();
+
+        let msg1 = b"hello";
+        let msg2 = b"world!";
+
+        let listener = or_panic!(UnixListener::bind(&socket_path));
+        let thread = thread::spawn(move || {
+            let mut stream = or_panic!(listener.accept()).0;
+            let mut buf = [0; 5];
+            or_panic!(stream.read(&mut buf));
+            assert_eq!(&msg1[..], &buf[..]);
+            or_panic!(stream.write_all(msg2));
+        });
+
+        let mut stream = or_panic!(UnixStream::connect(&socket_path));
+        assert_eq!(Some(&socket_path.as_bytes()[1..]),
                    stream.peer_addr().unwrap().as_abstract());
         or_panic!(stream.write_all(msg1));
         let mut buf = vec![];
