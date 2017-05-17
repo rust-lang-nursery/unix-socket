@@ -1330,6 +1330,7 @@ impl IntoRawFd for UnixDatagram {
 #[cfg(test)]
 mod test {
     extern crate tempdir;
+    extern crate libc;
 
     use std::thread;
     use std::io;
@@ -1434,6 +1435,10 @@ mod test {
     #[cfg(target_os = "linux")]
     fn abstract_address_max_len() {
         use os::linux::SocketAddrExt;
+        use std::ffi::OsStr;
+        use std::io::Write;
+        use std::mem;
+        use std::os::unix::ffi::OsStrExt;
 
         let len = unsafe {
             let addr: libc::sockaddr_un = mem::zeroed();
@@ -1441,7 +1446,7 @@ mod test {
         };
 
         let mut socket_path = vec![0; len];
-        socket_path[1..9].copy_from_slice(b"the path");
+        (&mut socket_path[1..9]).write_all(b"the path").unwrap();
         let socket_path: &OsStr = OsStr::from_bytes(&socket_path).into();
 
         let msg1 = b"hello";
