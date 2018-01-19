@@ -691,11 +691,14 @@ impl UnixListener {
     ///
     /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
     /// ```
+
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_STREAM));
             let (addr, len) = try!(sockaddr_un(path));
-
+            #[cfg(target_os="android")]
+            try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len as i32)));
+            #[cfg(not(target_os="android"))]
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
             try!(cvt(libc::listen(inner.0, 128)));
 
@@ -928,11 +931,14 @@ impl UnixDatagram {
     ///
     /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
     /// ```
+
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
         unsafe {
             let inner = try!(Inner::new(libc::SOCK_DGRAM));
             let (addr, len) = try!(sockaddr_un(path));
-
+            #[cfg(target_os="android")]
+            try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len as i32)));
+            #[cfg(not(target_os="android"))]
             try!(cvt(libc::bind(inner.0, &addr as *const _ as *const _, len)));
 
             Ok(UnixDatagram { inner: inner })
